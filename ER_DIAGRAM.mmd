@@ -1,0 +1,110 @@
+erDiagram
+    USER {
+        ObjectId _id
+        String gymId
+        String name
+        String email
+        String phone
+        String role
+        String status
+    }
+    MEMBER {
+        ObjectId _id
+        String gymId
+        ObjectId user
+        ObjectId trainer
+        ObjectId currentPlan
+        Date membershipStartDate
+        Date membershipExpiryDate
+        Boolean isActivePlan
+        String status
+        String paymentStatus
+        String secretCode
+        ObjectId assignedWorkout
+        ObjectId assignedDiet
+    }
+    PLAN {
+        ObjectId _id
+        String gymId
+        String name
+        Number price
+        Number duration
+    }
+    WORKOUTPLAN {
+        ObjectId _id
+        String gymId
+        String name
+        String goal
+        String difficulty
+        Boolean isTemplate
+        ObjectId createdBy
+        ObjectId assignedTo
+    }
+    DIETPLAN {
+        ObjectId _id
+        String gymId
+        String name
+        String goal
+        Number calories
+        Boolean isTemplate
+        ObjectId createdBy
+        ObjectId assignedTo
+    }
+    ATTENDANCE {
+        ObjectId _id
+        String gymId
+        ObjectId member
+        String date
+        Date checkIn
+        Date checkOut
+        String status
+    }
+    PAYMENT {
+        ObjectId _id
+        String gymId
+        ObjectId member
+        ObjectId plan
+        Number amount
+        String method
+        String status
+    }
+    BOOKING {
+        ObjectId _id
+        String gymId
+        ObjectId classSlot
+        ObjectId member
+        String status
+    }
+    NOTIFICATION {
+        ObjectId _id
+        ObjectId user
+        String title
+        String message
+        String type
+        Boolean isRead
+    }
+    PROGRESS {
+        ObjectId _id
+        ObjectId member
+        Number weightKg
+        Number heightCm
+        Number bmi
+    }
+    CLASSLOT {
+        ObjectId _id
+        String gymId
+        String name
+    }
+    USER ||--o{ MEMBER : "owns"
+    USER ||--o{ MEMBER : "trains"
+    MEMBER }o--|| PLAN : "currentPlan"
+    MEMBER ||--o{ PAYMENT : "pays"
+    MEMBER ||--o{ ATTENDANCE : "records"
+    MEMBER ||--o{ BOOKING : "books"
+    MEMBER ||--o{ PROGRESS : "tracks"
+    MEMBER }o--|| WORKOUTPLAN : "assignedWorkout"
+    MEMBER }o--|| DIETPLAN : "assignedDiet"
+    USER ||--o{ WORKOUTPLAN : "creates"
+    USER ||--o{ DIETPLAN : "creates"
+    USER ||--o{ NOTIFICATION : "receives"
+    CLASSLOT ||--o{ BOOKING : "offers"

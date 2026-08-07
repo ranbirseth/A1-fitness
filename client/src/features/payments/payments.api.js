@@ -1,0 +1,10 @@
+import http from "../../api/http";
+export const getPayments = () => http.get("/payments/my-payments");
+export const getAdminPayments = () => http.get("/payments");
+export const getPendingDues = () => http.get("/payments/dues");
+export const getInvoice = (paymentId) => http.get(`/payments/${paymentId}/invoice`);
+export const recordPayment = (payload) => http.post("/payments", payload);
+export const markAsPaid = (paymentId) => http.patch(`/payments/${paymentId}/paid`);
+export const markAsUnpaid = (paymentId) => http.patch(`/payments/${paymentId}/unpaid`);
+export const createOnlinePaymentIntent = () => http.post("/payments/online/intent");
+export const confirmOnlinePayment = (payload) => http.post("/payments/online/confirm", payload);

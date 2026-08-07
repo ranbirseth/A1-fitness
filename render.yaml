@@ -1,0 +1,23 @@
+# ============================================
+# DEPLOYMENT CONFIGURATION FOR RENDER.COM
+# ============================================
+# This file is for production deployment only.
+# For local development, use server/.env instead.
+# ============================================
+# DO NOT USE THIS FOR LOCAL DEVELOPMENT
+# ============================================
+
+services:
+  - type: web
+    name: gymza-saas
+    env: node
+    plan: free
+    buildCommand: npm install && npm install --prefix server
+    startCommand: npm start --prefix server
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      # NOTE: These environment variables must be set in Render dashboard
+      # MONGO_URI, REDIS_URL, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET
