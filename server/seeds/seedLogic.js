@@ -2,11 +2,11 @@ const User = require("../models/user.model");
 
 const DEFAULT_ADMIN = {
   gymId: "MAIN",
-  name: "Rudra Fitness Admin",
-  email: "shivadas01635@gmail.com",
-  password: "rudra2026",
+  name: " gym Admin",
+  email: "admin@gmail.com",
+  password: "admin2026",
   role: "admin",
-  phone: "9999999999",
+  phone: "78656647534",
   status: "active"
 };
 

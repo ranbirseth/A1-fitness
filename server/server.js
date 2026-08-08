@@ -75,16 +75,22 @@ app.get("/api/health", asyncHandler(async (_req, res) => {
   }
 
   const userCount = await User.countDocuments();
-  const admin = await User.findOne({ email: "admin@gymza.com", gymId: "MAIN" });
-  res.json({ 
-    success: true, 
-    message: "Server healthy", 
-    data: { 
+
+  const admin = await User.findOne({
+    email: "admin@gmail.com",
+    gymId: "MAIN",
+    role: "admin"
+  });
+
+  res.json({
+    success: true,
+    message: "Server healthy",
+    data: {
       dbReady: true,
-      totalUsers: userCount, 
+      totalUsers: userCount,
       adminExists: !!admin,
       gymId: "MAIN"
-    } 
+    }
   });
 }));
 app.use("/api/auth", require("./routes/auth.routes"));
