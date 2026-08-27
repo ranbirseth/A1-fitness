@@ -1,15 +1,19 @@
 const Member = require("../models/member.model");
 const User = require("../models/user.model");
 const Plan = require("../models/plan.model");
+const PlanBranch = require("../models/planBranch.model");
 const Payment = require("../models/payment.model");
 const Attendance = require("../models/attendance.model");
 const Progress = require("../models/progress.model");
 const Notification = require("../models/notification.model");
 const WorkoutPlan = require("../models/workout.model");
 const DietPlan = require("../models/diet.model");
+const AuditLog = require("../models/audit.model");
+const mongoose = require("mongoose");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { sendResponse } = require("../utils/response");
 const { getPagination } = require("../utils/pagination");
+const { enforceBranchOwnership } = require("../middlewares/branchScope.middleware");
 
 const calculateExpiry = (startDate, durationDays) => {
   const expiry = new Date(startDate);
@@ -32,16 +36,53 @@ const generateUniqueSecretCode = async () => {
   return code;
 };
 
+const validatePlanBranchAccess = async (planId, branchCode, gymId, userRole) => {
+  if (userRole === "superadmin") return;
+  const normalizedBranch = (branchCode || "MAIN").trim().toUpperCase();
+  const planBranch = await PlanBranch.findOne({
+    gymId,
+    planId,
+    branchCode: normalizedBranch,
+    status: "active"
+  });
+  if (!planBranch) {
+    throw Object.assign(
+      new Error("This plan is not available for your branch. Ask the superadmin to apply it first."),
+      { statusCode: 403 }
+    );
+  }
+};
+
 const createMember = asyncHandler(async (req, res) => {
   const { name, email, phone, password, trainerId, planId, membershipStartDate, branchCode = "MAIN" } = req.body;
   const photo = req.file ? `/uploads/${req.file.filename}` : undefined;
   const gymId = req.gymId;
 
-  const user = await User.create({ gymId, name, email, phone, password, role: "member", photo });
+  const scopedBranchCode = req.user.role === "superadmin"
+    ? (branchCode || "MAIN").trim().toUpperCase()
+    : (req.user.branchCode || "MAIN").trim().toUpperCase();
+
+  const existingUser = await User.findOne({ gymId, email: email?.toLowerCase().trim() });
+  if (existingUser) {
+    throw Object.assign(new Error("A member with this email already exists in this gym"), { statusCode: 409 });
+  }
+
+  const user = await User.create({
+    gymId,
+    name,
+    email: email?.toLowerCase().trim(),
+    phone,
+    password,
+    role: "member",
+    photo,
+    branchCode: scopedBranchCode
+  });
   
   let membershipExpiryDate = null;
   if (planId) {
     const plan = await Plan.findOne({ _id: planId, gymId });
+    if (!plan) throw Object.assign(new Error("Plan not found"), { statusCode: 404 });
+    await validatePlanBranchAccess(planId, scopedBranchCode, gymId, req.user.role);
     const start = membershipStartDate ? new Date(membershipStartDate) : new Date();
     if (plan) {
       membershipExpiryDate = calculateExpiry(start, plan.duration);
@@ -61,14 +102,20 @@ const createMember = asyncHandler(async (req, res) => {
     status: "pending",
     paymentStatus: "pending",
     secretCode,
-    branchCode
+    branchCode: scopedBranchCode
   });
   sendResponse(res, { status: 201, message: "Member created", data: member });
 });
 
-const fetchMembers = async (query, gymId) => {
+const fetchMembers = async (req, query, gymId) => {
   const { skip, limit, page } = getPagination(query);
-  const branchFilter = query.branchCode ? { branchCode: query.branchCode, gymId } : { gymId };
+  const branchFilter = { gymId };
+
+  if (req.user && req.user.role !== "superadmin") {
+    branchFilter.branchCode = (req.user.branchCode || "MAIN").trim().toUpperCase();
+  } else if (query.branchCode && query.branchCode !== "ALL" && query.branchCode !== "all") {
+    branchFilter.branchCode = query.branchCode.trim().toUpperCase();
+  }
   
   // Status filter logic
   if (query.status && query.status !== "all") {
@@ -106,6 +153,7 @@ const fetchMembers = async (query, gymId) => {
       $project: {
         _id: 1,
         gymId: 1,
+        branchCode: 1,
         isActivePlan: 1,
         membershipExpiryDate: 1,
         status: 1,
@@ -126,23 +174,23 @@ const fetchMembers = async (query, gymId) => {
 };
 
 const listMembers = asyncHandler(async (req, res) => {
-  const data = await fetchMembers(req.query, req.gymId);
+  const data = await fetchMembers(req, req.query, req.gymId);
   sendResponse(res, { message: "Members fetched", data });
 });
 
 const searchMembers = asyncHandler(async (req, res) => {
-  const data = await fetchMembers({ ...req.query, search: req.query.q || "" }, req.gymId);
+  const data = await fetchMembers(req, { ...req.query, search: req.query.q || "" }, req.gymId);
   sendResponse(res, { message: "Members search fetched", data });
 });
 
 const getMember = asyncHandler(async (req, res) => {
   const member = await Member.findOne({ _id: req.params.id, gymId: req.gymId }).populate("user trainer currentPlan");
   if (!member) throw Object.assign(new Error("Member not found in your gym"), { statusCode: 404 });
+  if (!enforceBranchOwnership(member.branchCode, req)) {
+    throw Object.assign(new Error("Member not found in your branch"), { statusCode: 404 });
+  }
   sendResponse(res, { message: "Member fetched", data: member });
 });
-
-const AuditLog = require("../models/audit.model");
-const mongoose = require("mongoose");
 
 const updateMember = asyncHandler(async (req, res) => {
   const session = await mongoose.startSession();
@@ -151,23 +199,32 @@ const updateMember = asyncHandler(async (req, res) => {
   try {
     const member = await Member.findOne({ _id: req.params.id, gymId: req.gymId }).session(session);
     if (!member) throw Object.assign(new Error("Member not found in your gym"), { statusCode: 404 });
+    if (!enforceBranchOwnership(member.branchCode, req)) {
+      throw Object.assign(new Error("Member not found in your branch"), { statusCode: 404 });
+    }
 
-    const { name, phone, email, password, reason, trainerId, ...memberPayload } = req.body;
+    const { name, phone, email, password, reason, trainerId, branchCode, ...memberPayload } = req.body;
+    
+    // Only superadmin can reassign a member's branch
+    if (req.user.role === "superadmin" && branchCode) {
+      memberPayload.branchCode = branchCode.trim().toUpperCase();
+    }
     const photo = req.file ? `/uploads/${req.file.filename}` : undefined;
 
     const oldMemberValues = member.toObject();
     let oldUserValues = null;
 
-    if (name || phone || email || photo || password || memberPayload.status) {
+    if (name || phone || email || photo || password || memberPayload.status || memberPayload.branchCode) {
       const user = await User.findById(member.user).session(session);
       if (user) {
         oldUserValues = user.toObject();
         const userUpdate = {
           ...(name && { name }),
           ...(phone && { phone }),
-          ...(email && { email }),
+          ...(email && { email: email.toLowerCase().trim() }),
           ...(photo && { photo }),
           ...(password && { password }),
+          ...(memberPayload.branchCode && { branchCode: memberPayload.branchCode }),
         };
 
         if (memberPayload.status === 'inactive') {
@@ -226,6 +283,9 @@ const updateMember = asyncHandler(async (req, res) => {
 const deleteMember = asyncHandler(async (req, res) => {
   const member = await Member.findOne({ _id: req.params.id, gymId: req.gymId });
   if (!member) throw Object.assign(new Error("Member not found in your gym"), { statusCode: 404 });
+  if (!enforceBranchOwnership(member.branchCode, req)) {
+    throw Object.assign(new Error("Member not found in your branch"), { statusCode: 404 });
+  }
   
   const userId = member.user;
   const memberId = member._id;
@@ -249,19 +309,23 @@ const assignPlan = asyncHandler(async (req, res) => {
   const { planId, membershipStartDate } = req.body;
   const member = await Member.findOne({ _id: req.params.id, gymId: req.gymId });
   if (!member) throw Object.assign(new Error("Member not found in your gym"), { statusCode: 404 });
+  if (!enforceBranchOwnership(member.branchCode, req)) {
+    throw Object.assign(new Error("Member not found in your branch"), { statusCode: 404 });
+  }
+
   const plan = await Plan.findOne({ _id: planId, gymId: req.gymId });
   if (!plan) throw Object.assign(new Error("Plan not found in your gym"), { statusCode: 404 });
+  await validatePlanBranchAccess(planId, member.branchCode, req.gymId, req.user.role);
+  
   const startDate = membershipStartDate ? new Date(membershipStartDate) : new Date();
   member.currentPlan = plan._id;
   member.membershipStartDate = startDate;
   member.membershipExpiryDate = calculateExpiry(startDate, plan.duration);
   member.isActivePlan = false; // Requires payment to become active
   member.paymentStatus = "pending";
-  // Only set to pending if they are already pending or inactive (new signup/discarded)
   if (member.status === "pending" || member.status === "inactive") {
     member.status = "pending";
   } else {
-    // If they were active/expired/cancelled, stay active (access will be blocked by paymentStatus)
     member.status = "active";
   }
   await member.save();
@@ -281,11 +345,14 @@ const renewPlan = asyncHandler(async (req, res) => {
   const { planId } = req.body;
   const member = await Member.findOne({ _id: req.params.id, gymId: req.gymId });
   if (!member) throw Object.assign(new Error("Member not found in your gym"), { statusCode: 404 });
+  if (!enforceBranchOwnership(member.branchCode, req)) {
+    throw Object.assign(new Error("Member not found in your branch"), { statusCode: 404 });
+  }
   
   const plan = await Plan.findOne({ _id: planId || member.currentPlan, gymId: req.gymId });
   if (!plan) throw Object.assign(new Error("Plan not found"), { statusCode: 404 });
+  await validatePlanBranchAccess(plan._id, member.branchCode, req.gymId, req.user.role);
 
-  // If active, extend from current expiry. If expired, start from today.
   const isCurrentlyActive = member.status === "active" && member.membershipExpiryDate && new Date() < new Date(member.membershipExpiryDate);
   const startDate = isCurrentlyActive ? new Date(member.membershipExpiryDate) : new Date();
   
@@ -309,11 +376,14 @@ const upgradePlan = asyncHandler(async (req, res) => {
   const { planId } = req.body;
   const member = await Member.findOne({ _id: req.params.id, gymId: req.gymId });
   if (!member) throw Object.assign(new Error("Member not found"), { statusCode: 404 });
+  if (!enforceBranchOwnership(member.branchCode, req)) {
+    throw Object.assign(new Error("Member not found in your branch"), { statusCode: 404 });
+  }
   
   const plan = await Plan.findOne({ _id: planId, gymId: req.gymId });
   if (!plan) throw Object.assign(new Error("Plan not found"), { statusCode: 404 });
+  await validatePlanBranchAccess(planId, member.branchCode, req.gymId, req.user.role);
 
-  // Upgrading usually starts from today
   const startDate = new Date();
   member.membershipStartDate = startDate;
   member.membershipExpiryDate = calculateExpiry(startDate, plan.duration);
@@ -334,6 +404,9 @@ const upgradePlan = asyncHandler(async (req, res) => {
 const cancelPlan = asyncHandler(async (req, res) => {
   const member = await Member.findOne({ _id: req.params.id, gymId: req.gymId });
   if (!member) throw Object.assign(new Error("Member not found"), { statusCode: 404 });
+  if (!enforceBranchOwnership(member.branchCode, req)) {
+    throw Object.assign(new Error("Member not found in your branch"), { statusCode: 404 });
+  }
   
   member.status = "cancelled";
   member.isActivePlan = false;
@@ -344,6 +417,9 @@ const cancelPlan = asyncHandler(async (req, res) => {
 const freezePlan = asyncHandler(async (req, res) => {
   const member = await Member.findOne({ _id: req.params.id, gymId: req.gymId });
   if (!member || member.status !== "active") throw Object.assign(new Error("Only active members can freeze plans"), { statusCode: 400 });
+  if (!enforceBranchOwnership(member.branchCode, req)) {
+    throw Object.assign(new Error("Member not found in your branch"), { statusCode: 404 });
+  }
   
   const now = new Date();
   const expiry = new Date(member.membershipExpiryDate);
@@ -364,6 +440,9 @@ const freezePlan = asyncHandler(async (req, res) => {
 const resumePlan = asyncHandler(async (req, res) => {
   const member = await Member.findOne({ _id: req.params.id, gymId: req.gymId });
   if (!member || member.status !== "frozen") throw Object.assign(new Error("Only frozen plans can be resumed"), { statusCode: 400 });
+  if (!enforceBranchOwnership(member.branchCode, req)) {
+    throw Object.assign(new Error("Member not found in your branch"), { statusCode: 404 });
+  }
   
   const now = new Date();
   member.status = "active";
@@ -396,11 +475,14 @@ const updateMyProfile = asyncHandler(async (req, res) => {
 const approveMember = asyncHandler(async (req, res) => {
   const member = await Member.findOne({ _id: req.params.id, gymId: req.gymId });
   if (!member) throw Object.assign(new Error("Member not found"), { statusCode: 404 });
+  if (!enforceBranchOwnership(member.branchCode, req)) {
+    throw Object.assign(new Error("Member not found in your branch"), { statusCode: 404 });
+  }
   
   member.status = "active";
   await member.save();
 
-  // Also ensure User document is active (though it defaults to active)
+  // Also ensure User document is active
   await User.findByIdAndUpdate(member.user, { status: "active" });
   
   sendResponse(res, { message: "Member approved successfully", data: member });

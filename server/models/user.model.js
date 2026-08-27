@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const userSchema = new mongoose.Schema(
   {
     gymId: { type: String, required: true, index: true }, // Multi-tenant ID
+    branchCode: { type: String, default: "MAIN", index: true },
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, lowercase: true, trim: true },
     phone: { type: String, trim: true },

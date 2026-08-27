@@ -35,7 +35,8 @@ const attendanceSchema = new mongoose.Schema(
       timestamp: { type: Date, default: Date.now },
       details: String,
       ipAddress: String
-    }]
+    }],
+    branchCode: { type: String, default: "MAIN", index: true }
   },
   { timestamps: true }
 );

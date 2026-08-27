@@ -2,6 +2,7 @@ import React, { FormEvent, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { login } from "../features/auth/auth.api";
 import { useAuthStore } from "../store/auth.store";
+import http from "../api/http";
 import { Mail, Lock, Eye, EyeOff } from "lucide-react";
 
 const animationStyles = `
@@ -219,6 +220,27 @@ export default function LoginPage() {
     }
   };
 
+  const devLogin = async (devRole: string) => {
+    setError("");
+    setLoading(true);
+    try {
+      const { data } = await http.post("/auth/demo-login", { role: devRole });
+      const userData = data.data.user;
+      setAuth(userData, data.data.accessToken);
+      if (userData.role === "member") {
+        if (userData.status === "pending") navigate("/pending-approval");
+        else if (userData.status === "inactive") navigate("/account-inactive");
+        else navigate("/");
+      } else {
+        navigate("/");
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Dev login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="login-page" style={{ 
       display: 'flex', 
@@ -322,6 +344,7 @@ export default function LoginPage() {
                 <option value="member">Member</option>
                 <option value="trainer">Trainer</option>
                 <option value="admin">Admin</option>
+                {import.meta.env.DEV && <option value="superadmin">Superadmin</option>}
               </select>
             </div>
 
@@ -370,6 +393,38 @@ export default function LoginPage() {
               Don't have an account? <Link to="/signup" style={{ color: 'var(--clr-primary)', fontWeight: '600' }}>Sign up</Link>
             </p>
           </div>
+
+          {import.meta.env.DEV && (
+            <div style={{ marginTop: '1.5rem', padding: '1rem', border: '1px dashed rgba(251, 191, 36, 0.4)', borderRadius: '8px', background: 'rgba(251, 191, 36, 0.05)' }}>
+              <p style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: '700', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Development Login — Remove before production
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                {(["superadmin", "admin", "trainer", "member"] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => devLogin(r)}
+                    disabled={loading}
+                    style={{
+                      padding: '0.45rem 0.5rem',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(251, 191, 36, 0.3)',
+                      background: 'rgba(251, 191, 36, 0.08)',
+                      color: '#f59e0b',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      opacity: loading ? 0.5 : 1,
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

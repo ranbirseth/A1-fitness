@@ -7,7 +7,12 @@ const { sendResponse } = require("../utils/response");
 const { getCache, setCache } = require("../services/cache.service");
 
 const getStats = asyncHandler(async (req, res) => {
-  const cacheKey = `dashboard:stats:${req.gymId}`;
+  const activeBranch = req.user.role === "superadmin"
+    ? (req.query.branchCode && req.query.branchCode !== "ALL" && req.query.branchCode !== "all" ? req.query.branchCode.trim().toUpperCase() : undefined)
+    : (req.user.branchCode || "MAIN").trim().toUpperCase();
+
+  const branchFilter = activeBranch ? { branchCode: activeBranch } : {};
+  const cacheKey = `dashboard:stats:${req.gymId}:${activeBranch || "all"}`;
   const cached = await getCache(cacheKey);
   if (cached) return sendResponse(res, { message: "Dashboard stats fetched (cache)", data: cached });
 
@@ -16,30 +21,53 @@ const getStats = asyncHandler(async (req, res) => {
   const endOfDay = new Date();
   endOfDay.setHours(23, 59, 59, 999);
 
+  const memberIdsInBranch = activeBranch
+    ? await Member.find({ gymId: req.gymId, branchCode: activeBranch }).distinct("_id")
+    : null;
+
+  const paymentMatch = {
+    gymId: req.gymId,
+    status: "paid",
+    ...(activeBranch ? {
+      $or: [
+        { branchCode: activeBranch },
+        { member: { $in: memberIdsInBranch } }
+      ]
+    } : {})
+  };
+
+  const attendanceMatch = {
+    gymId: req.gymId,
+    deletedAt: null,
+    checkIn: { $gte: startOfDay, $lte: endOfDay },
+    ...(activeBranch ? {
+      $or: [
+        { branchCode: activeBranch },
+        { member: { $in: memberIdsInBranch } }
+      ]
+    } : {})
+  };
+
   const [totalMembers, activePlans, revenueObj, activeTrainers, attendanceToday, revenueAnalytics, recentActivities] = await Promise.all([
-    Member.countDocuments({ gymId: req.gymId }),
-    Member.countDocuments({ gymId: req.gymId, isActivePlan: true }),
+    Member.countDocuments({ gymId: req.gymId, ...branchFilter }),
+    Member.countDocuments({ gymId: req.gymId, ...branchFilter, isActivePlan: true }),
     Payment.aggregate([
-      { $match: { gymId: req.gymId, status: "paid" } }, 
+      { $match: paymentMatch },
       { $group: { _id: null, total: { $sum: "$amount" } } }
     ]),
-    User.countDocuments({ gymId: req.gymId, role: "trainer" }),
-    Attendance.countDocuments({ 
-      gymId: req.gymId, 
-      checkIn: { $gte: startOfDay, $lte: endOfDay } 
-    }),
+    User.countDocuments({ gymId: req.gymId, role: "trainer", ...branchFilter }),
+    Attendance.countDocuments(attendanceMatch),
     // Revenue analytics for last 7 days
     Payment.aggregate([
       { 
         $match: { 
-          gymId: req.gymId, 
-          status: "paid", 
-          createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } 
+          ...paymentMatch,
+          date: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } 
         } 
       },
       {
         $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
           total: { $sum: "$amount" }
         }
       },
@@ -47,9 +75,9 @@ const getStats = asyncHandler(async (req, res) => {
     ]),
     // Recent activities (mix of new members, payments, and attendance)
     Promise.all([
-      Member.find({ gymId: req.gymId }).sort({ createdAt: -1 }).limit(2).populate("user", "name"),
-      Payment.find({ gymId: req.gymId, status: "paid" }).sort({ createdAt: -1 }).limit(2).populate({ path: "member", populate: { path: "user", select: "name" } }),
-      Attendance.find({ gymId: req.gymId }).sort({ checkIn: -1 }).limit(2).populate({ path: "member", populate: { path: "user", select: "name" } })
+      Member.find({ gymId: req.gymId, ...branchFilter }).sort({ createdAt: -1 }).limit(3).populate("user", "name"),
+      Payment.find(paymentMatch).sort({ createdAt: -1 }).limit(3).populate({ path: "member", populate: { path: "user", select: "name" } }),
+      Attendance.find({ gymId: req.gymId, deletedAt: null, ...(activeBranch ? { $or: [{ branchCode: activeBranch }, { member: { $in: memberIdsInBranch } }] } : {}) }).sort({ checkIn: -1 }).limit(3).populate({ path: "member", populate: { path: "user", select: "name" } })
     ])
   ]);
 
@@ -67,7 +95,7 @@ const getStats = asyncHandler(async (req, res) => {
     })),
     ...recentActivities[2].map(a => ({ 
       text: `${a.member?.user?.name || 'Unknown'} checked in`, 
-      time: a.checkIn, 
+      time: a.checkIn || a.createdAt, 
       color: "var(--clr-secondary)" 
     }))
   ].sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 5);
@@ -79,10 +107,11 @@ const getStats = asyncHandler(async (req, res) => {
     activeTrainers,
     attendanceToday,
     revenueAnalytics,
-    recentActivities: processedActivities
+    recentActivities: processedActivities,
+    branchCode: activeBranch || "ALL"
   };
   
-  await setCache(cacheKey, data, 30);
+  await setCache(cacheKey, data, 15);
   sendResponse(res, { message: "Dashboard stats fetched", data });
 });
 

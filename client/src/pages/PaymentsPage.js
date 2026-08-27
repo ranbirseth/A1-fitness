@@ -3,11 +3,14 @@ import { useEffect, useState } from 'react';
 import { getPayments, getAdminPayments, getInvoice, markAsPaid, markAsUnpaid } from '../features/payments/payments.api';
 import { getMyProfile } from '../features/members/members.api';
 import { useAuthStore } from '../store/auth.store';
+import { useBranchStore } from '../store/branch.store';
 import { CreditCard, Calendar, Clock, Download, FileText, Printer, AlertTriangle, Check, Search, Filter, MoreVertical, X, TrendingUp, Users, DollarSign } from 'lucide-react';
 import Modal from '../components/Modal';
 const PaymentsPage = () => {
     const { user } = useAuthStore();
-    const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
+    const { selectedBranch: globalBranch } = useBranchStore();
+    const isSuperAdmin = user?.role === 'superadmin';
+    const isAdmin = isSuperAdmin || user?.role === 'admin';
     const [payments, setPayments] = useState([]);
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -18,11 +21,15 @@ const PaymentsPage = () => {
     const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
     const [selectedInvoice, setSelectedInvoice] = useState(null);
     const [fetchingInvoice, setFetchingInvoice] = useState(false);
-    const fetchData = async () => {
+    const fetchData = async (branch) => {
         setLoading(true);
         try {
+            const params = {};
+            if (isSuperAdmin && branch && branch !== 'ALL') {
+                params.branchCode = branch;
+            }
             const [payRes, profRes] = await Promise.all([
-                isAdmin ? getAdminPayments() : getPayments(),
+                isAdmin ? getAdminPayments(params) : getPayments(),
                 isAdmin ? Promise.resolve({ data: { data: null } }) : getMyProfile()
             ]);
             const paymentData = payRes.data?.data;
@@ -46,8 +53,8 @@ const PaymentsPage = () => {
         }
     };
     useEffect(() => {
-        fetchData();
-    }, []);
+        fetchData(globalBranch);
+    }, [globalBranch]);
     const handleToggleStatus = async (id, currentStatus) => {
         try {
             if (currentStatus === 'pending') {

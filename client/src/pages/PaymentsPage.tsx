@@ -2,12 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { getPayments, getAdminPayments, getInvoice, markAsPaid, markAsUnpaid } from '../features/payments/payments.api';
 import { getMyProfile } from '../features/members/members.api';
 import { useAuthStore } from '../store/auth.store';
+import { useBranchStore } from '../store/branch.store';
 import { CreditCard, Calendar, Clock, Download, FileText, Printer, AlertTriangle, Check, Search, Filter, MoreVertical, X, TrendingUp, Users, DollarSign } from 'lucide-react';
 import Modal from '../components/Modal';
 
 const PaymentsPage: React.FC = () => {
   const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
+  const { selectedBranch: globalBranch } = useBranchStore();
+  const isSuperAdmin = user?.role === 'superadmin';
+  const isAdmin = isSuperAdmin || user?.role === 'admin';
   
   const [payments, setPayments] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);
@@ -21,11 +24,15 @@ const PaymentsPage: React.FC = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [fetchingInvoice, setFetchingInvoice] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = async (branch?: string) => {
     setLoading(true);
     try {
+      const params: Record<string, any> = {};
+      if (isSuperAdmin && branch && branch !== 'ALL') {
+        params.branchCode = branch;
+      }
       const [payRes, profRes] = await Promise.all([
-        isAdmin ? getAdminPayments() : getPayments(),
+        isAdmin ? getAdminPayments(params) : getPayments(),
         isAdmin ? Promise.resolve({ data: { data: null } }) : getMyProfile()
       ]);
       
@@ -49,8 +56,8 @@ const PaymentsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    fetchData(globalBranch);
+  }, [globalBranch]);
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     try {

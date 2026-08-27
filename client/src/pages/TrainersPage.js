@@ -1,11 +1,16 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useState } from 'react';
-import { UserSquare2, Star, Users, Plus, Edit2, Trash2, Save, Search, Mail, Shield, Phone, Zap } from 'lucide-react';
+import { Users, Plus, Edit2, Trash2, Save, Search, Mail, Phone, Building2 } from 'lucide-react';
 import { getTrainers, createTrainer, deleteTrainer, updateTrainer } from '../features/trainers/trainers.api';
 import { getMembers } from '../features/members/members.api';
 import { useDebounce } from '../hooks/useDebounce';
+import { useAuthStore } from '../store/auth.store';
+import { useBranchStore } from '../store/branch.store';
 import Modal from '../components/Modal';
 const TrainersPage = () => {
+    const { user } = useAuthStore();
+    const { branches, selectedBranch: globalBranch, setSelectedBranch } = useBranchStore();
+    const isSuperAdmin = user?.role === 'superadmin';
     const [trainers, setTrainers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -13,22 +18,34 @@ const TrainersPage = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [filterBranch, setFilterBranch] = useState(globalBranch);
     const debouncedSearch = useDebounce(searchQuery, 400);
     const [selectedTrainer, setSelectedTrainer] = useState(null);
     const [trainerMembers, setTrainerMembers] = useState([]);
     const [loadingMembers, setLoadingMembers] = useState(false);
+    const defaultBranch = isSuperAdmin
+        ? (filterBranch !== 'ALL' ? filterBranch : (branches[0]?.branchCode || 'MAIN'))
+        : (user?.branchCode || 'MAIN');
     const [formData, setFormData] = useState({
         name: '',
         specialty: '',
         email: '',
         phone: '',
         password: 'Password123',
-        status: 'active'
+        status: 'active',
+        branchCode: defaultBranch
     });
-    const fetchTrainers = async () => {
+    useEffect(() => {
+        setFilterBranch(globalBranch);
+    }, [globalBranch]);
+    const fetchTrainers = async (branch = filterBranch) => {
         setLoading(true);
         try {
-            const res = await getTrainers();
+            const params = {};
+            if (isSuperAdmin && branch && branch !== 'ALL') {
+                params.branchCode = branch;
+            }
+            const res = await getTrainers(params);
             const trainerData = res.data?.data;
             setTrainers(Array.isArray(trainerData) ? trainerData : (trainerData?.items || []));
         }
@@ -58,11 +75,16 @@ const TrainersPage = () => {
         }
     };
     useEffect(() => {
-        fetchTrainers();
-    }, []);
+        fetchTrainers(filterBranch);
+    }, [filterBranch]);
+    const handleBranchChange = (newBranch) => {
+        setFilterBranch(newBranch);
+        if (isSuperAdmin)
+            setSelectedBranch(newBranch);
+    };
     const handleOpenAdd = () => {
         setEditingId(null);
-        setFormData({ name: '', specialty: '', email: '', phone: '', password: 'Password123', status: 'active' });
+        setFormData({ name: '', specialty: '', email: '', phone: '', password: 'Password123', status: 'active', branchCode: defaultBranch });
         setIsModalOpen(true);
     };
     const handleOpenEdit = (trainer) => {
@@ -73,7 +95,8 @@ const TrainersPage = () => {
             phone: trainer.user?.phone || trainer.phone || '',
             specialty: trainer.specialty || '',
             password: '', // Don't show password on edit
-            status: trainer.status || 'active'
+            status: trainer.status || 'active',
+            branchCode: trainer.branchCode || 'MAIN'
         });
         setIsModalOpen(true);
     };
@@ -88,10 +111,14 @@ const TrainersPage = () => {
                 await updateTrainer(editingId, payload);
             }
             else {
-                await createTrainer(formData);
+                const payload = {
+                    ...formData,
+                    branchCode: isSuperAdmin ? formData.branchCode : (user?.branchCode || 'MAIN')
+                };
+                await createTrainer(payload);
             }
             setIsModalOpen(false);
-            fetchTrainers();
+            fetchTrainers(filterBranch);
         }
         catch (error) {
             alert(error.response?.data?.message || 'Failed to save trainer');
@@ -105,20 +132,20 @@ const TrainersPage = () => {
             return;
         try {
             await deleteTrainer(id);
-            fetchTrainers();
+            fetchTrainers(filterBranch);
         }
         catch (error) {
             alert(error.response?.data?.message || 'Failed to delete trainer');
         }
     };
-    const filteredTrainers = trainers.filter(trainer => {
-        const name = (trainer.user?.name || trainer.name || '').toLowerCase();
-        const email = (trainer.user?.email || trainer.email || '').toLowerCase();
-        const specialty = (trainer.specialty || '').toLowerCase();
+    const filteredTrainers = trainers.filter(t => {
+        const name = t.user?.name || t.name || '';
+        const email = t.user?.email || t.email || '';
+        const specialty = t.specialty || '';
         const q = debouncedSearch.toLowerCase();
-        return name.includes(q) || email.includes(q) || specialty.includes(q);
+        return name.toLowerCase().includes(q) || email.toLowerCase().includes(q) || specialty.toLowerCase().includes(q);
     });
-    return (_jsxs("div", { children: [_jsx("div", { className: "page-header", style: { marginBottom: '2rem' }, children: _jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }, children: [_jsxs("div", { children: [_jsx("h1", { children: "Trainers Management" }), _jsx("p", { className: "text-muted", children: "Manage gym trainers, their specialties, and access." })] }), _jsxs("button", { className: "btn btn-primary", onClick: handleOpenAdd, children: [_jsx(Plus, { size: 18 }), "Add Trainer"] })] }) }), _jsx("div", { className: "glass-panel", style: { padding: '1.25rem', marginBottom: '2rem' }, children: _jsxs("div", { className: "search-bar", style: { maxWidth: '450px', background: 'var(--clr-bg-base)' }, children: [_jsx(Search, { size: 18, className: "text-muted" }), _jsx("input", { placeholder: "Search by name, email, or specialty...", value: searchQuery, onChange: e => setSearchQuery(e.target.value) })] }) }), _jsx(Modal, { isOpen: isModalOpen, onClose: () => setIsModalOpen(false), title: editingId ? "Edit Trainer" : "Add New Trainer", children: _jsxs("form", { onSubmit: handleSubmit, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Full Name" }), _jsx("input", { className: "form-input", required: true, value: formData.name, onChange: e => setFormData({ ...formData, name: e.target.value }), placeholder: "e.g. Karan Johar" })] }), _jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Email Address" }), _jsx("input", { className: "form-input", type: "email", required: true, value: formData.email, onChange: e => setFormData({ ...formData, email: e.target.value }), placeholder: "karan@example.com" })] }), _jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Phone Number" }), _jsx("input", { className: "form-input", type: "tel", value: formData.phone, onChange: e => setFormData({ ...formData, phone: e.target.value }), placeholder: "e.g. +91 9876543210" })] }), _jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Specialty" }), _jsx("input", { className: "form-input", required: true, value: formData.specialty, onChange: e => setFormData({ ...formData, specialty: e.target.value }), placeholder: "e.g. Weightlifting" })] }), !editingId && (_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Password" }), _jsx("input", { className: "form-input", type: "password", required: true, value: formData.password, onChange: e => setFormData({ ...formData, password: e.target.value }), placeholder: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" })] })), editingId && (_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Status" }), _jsxs("select", { className: "form-input", value: formData.status, onChange: e => setFormData({ ...formData, status: e.target.value }), children: [_jsx("option", { value: "active", children: "Active" }), _jsx("option", { value: "inactive", children: "Inactive" })] })] })), _jsx("div", { style: { marginTop: '2rem' }, children: _jsxs("button", { className: "btn btn-primary w-full", type: "submit", disabled: isSaving, children: [_jsx(Save, { size: 18 }), isSaving ? 'Saving...' : (editingId ? 'Update Trainer' : 'Create Trainer')] }) })] }) }), loading ? (_jsxs("div", { className: "loading-state", style: { padding: '4rem', textAlign: 'center' }, children: [_jsx("div", { className: "spinner" }), _jsx("p", { className: "text-muted", style: { marginTop: '1rem' }, children: "Loading trainers..." })] })) : (_jsx("div", { className: "grid-cards", children: filteredTrainers.map((trainer) => (_jsxs("div", { className: "glass-card trainer-card", style: { padding: 0, position: 'relative', overflow: 'hidden' }, children: [_jsx("div", { style: {
+    return (_jsxs("div", { children: [_jsxs("div", { className: "page-header flex-responsive", style: { marginBottom: '2rem' }, children: [_jsxs("div", { children: [_jsx("h1", { children: "Trainers & Coaches" }), _jsx("p", { className: "text-muted", children: "Manage fitness coaches, specialties, assigned members, and branch assignments." })] }), _jsxs("button", { className: "btn btn-primary", onClick: handleOpenAdd, children: [_jsx(Plus, { size: 18 }), "Add Trainer"] })] }), _jsx("div", { className: "flex-responsive", style: { marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }, children: _jsxs("div", { className: "flex-responsive", style: { gap: '0.75rem', justifyContent: 'flex-start', width: '100%', flexWrap: 'wrap' }, children: [_jsxs("div", { className: "search-bar", style: { flex: '1 1 200px', minWidth: '150px', background: 'var(--clr-bg-base)', padding: '0.4rem 1rem' }, children: [_jsx(Search, { size: 16, className: "text-muted" }), _jsx("input", { placeholder: "Search by name, email, or specialty...", style: { fontSize: '0.85rem' }, value: searchQuery, onChange: (e) => setSearchQuery(e.target.value) })] }), isSuperAdmin && (_jsxs("div", { className: "filter-container", style: { display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--clr-bg-base)', padding: '0.4rem 1rem', borderRadius: '12px', border: '1px solid var(--clr-glass-border)', cursor: 'pointer' }, children: [_jsx(Building2, { size: 16, style: { color: 'var(--clr-primary)' } }), _jsxs("select", { className: "filter-select", style: { background: 'transparent', border: 'none', color: 'var(--clr-text-main)', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }, value: filterBranch, onChange: (e) => handleBranchChange(e.target.value), children: [_jsx("option", { value: "ALL", style: { background: '#1e1b4b', color: '#fff' }, children: "Branch: All Branches" }), branches.map(b => (_jsxs("option", { value: b.branchCode, style: { background: '#1e1b4b', color: '#fff' }, children: [b.name, " (", b.branchCode, ")"] }, b._id)))] })] }))] }) }), _jsx(Modal, { isOpen: isModalOpen, onClose: () => setIsModalOpen(false), title: editingId ? "Edit Trainer Profile" : "Add New Trainer", children: _jsxs("form", { onSubmit: handleSubmit, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Full Name" }), _jsx("input", { className: "form-input", required: true, placeholder: "e.g. Alex Hunter", value: formData.name, onChange: e => setFormData({ ...formData, name: e.target.value }) })] }), _jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Email Address" }), _jsx("input", { className: "form-input", type: "email", required: true, placeholder: "e.g. alex@gym.com", value: formData.email, onChange: e => setFormData({ ...formData, email: e.target.value }) })] }), _jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Phone Number" }), _jsx("input", { className: "form-input", type: "tel", placeholder: "e.g. +91 98765 43210", value: formData.phone, onChange: e => setFormData({ ...formData, phone: e.target.value }) })] }), isSuperAdmin && (_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Branch Assignment" }), _jsx("select", { className: "form-input", value: formData.branchCode, onChange: e => setFormData({ ...formData, branchCode: e.target.value }), required: true, children: branches.map(b => (_jsxs("option", { value: b.branchCode, children: [b.name, " (", b.branchCode, ")"] }, b._id))) })] })), _jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Specialty / Discipline" }), _jsx("input", { className: "form-input", required: true, placeholder: "e.g. Strength & Conditioning, HIIT, Yoga", value: formData.specialty, onChange: e => setFormData({ ...formData, specialty: e.target.value }) })] }), !editingId && (_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Temporary Password" }), _jsx("input", { className: "form-input", type: "password", required: true, value: formData.password, onChange: e => setFormData({ ...formData, password: e.target.value }) })] })), editingId && (_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Status" }), _jsxs("select", { className: "form-input", value: formData.status, onChange: e => setFormData({ ...formData, status: e.target.value }), children: [_jsx("option", { value: "active", children: "Active" }), _jsx("option", { value: "inactive", children: "Inactive" })] })] })), _jsx("div", { style: { marginTop: '2rem' }, children: _jsxs("button", { className: "btn btn-primary w-full", type: "submit", disabled: isSaving, children: [_jsx(Save, { size: 18 }), isSaving ? 'Saving...' : (editingId ? 'Update Trainer' : 'Create Trainer')] }) })] }) }), _jsx(Modal, { isOpen: isMemberModalOpen, onClose: () => setIsMemberModalOpen(false), title: `Members Assigned to ${selectedTrainer?.user?.name || selectedTrainer?.name || 'Trainer'}`, children: _jsx("div", { style: { padding: '0.5rem 0' }, children: loadingMembers ? (_jsxs("div", { style: { textAlign: 'center', padding: '2rem' }, children: [_jsx("div", { className: "spinner" }), _jsx("p", { className: "text-muted", style: { marginTop: '0.5rem' }, children: "Loading assigned members..." })] })) : trainerMembers.length === 0 ? (_jsxs("div", { style: { textAlign: 'center', padding: '2rem' }, className: "text-muted", children: [_jsx(Users, { size: 32, style: { margin: '0 auto 0.5rem', opacity: 0.5 } }), _jsx("p", { children: "No members currently assigned to this trainer." })] })) : (_jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '400px', overflowY: 'auto' }, children: trainerMembers.map((m) => (_jsxs("div", { className: "glass-panel", style: { padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }, children: [_jsxs("div", { children: [_jsx("h4", { style: { fontSize: '0.95rem', marginBottom: '0.15rem' }, children: m.user?.name }), _jsxs("p", { className: "text-muted", style: { fontSize: '0.8rem' }, children: [m.user?.email, " \u2022 ID: ", m.secretCode] }), _jsxs("span", { style: { fontSize: '0.75rem', color: 'var(--clr-primary)' }, children: ["Branch: ", m.branchCode || 'MAIN'] })] }), _jsx("span", { className: `status-badge ${m.status}`, children: m.status })] }, m._id))) })) }) }), loading ? (_jsxs("div", { className: "loading-state", style: { padding: '4rem', textAlign: 'center' }, children: [_jsx("div", { className: "spinner" }), _jsx("p", { className: "text-muted", style: { marginTop: '1rem' }, children: "Loading trainers..." })] })) : (_jsx("div", { className: "grid-cards", children: filteredTrainers.map((trainer) => (_jsxs("div", { className: "glass-card trainer-card", style: { padding: 0, position: 'relative', overflow: 'hidden' }, children: [_jsx("div", { style: {
                                 position: 'relative',
                                 height: '120px',
                                 background: `linear-gradient(135deg, rgba(6, 182, 212, 0.6) 0%, rgba(139, 92, 246, 0.6) 100%), url('https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=500&h=300&fit=crop')`,
@@ -134,15 +161,15 @@ const TrainersPage = () => {
                                         background: 'linear-gradient(135deg, var(--clr-primary), var(--clr-secondary))',
                                         position: 'relative',
                                         zIndex: 5
-                                    }, children: trainer.user?.name?.charAt(0) || trainer.name?.charAt(0) }), _jsxs("div", { className: "text-center", children: [_jsx("h3", { style: { fontSize: '1.35rem', marginBottom: '0.25rem' }, children: trainer.user?.name || trainer.name }), _jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.5rem' }, children: [_jsx("span", { className: `status-badge ${trainer.status || 'active'}`, children: trainer.status || 'active' }), _jsxs("span", { className: "text-muted", style: { fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }, children: [_jsx(Shield, { size: 12 }), " Trainer"] })] }), _jsx("div", { className: "info-pill", style: { display: 'inline-block', padding: '0.5rem 1rem', borderRadius: '30px', background: 'rgba(255, 255, 255, 0.05)', marginBottom: '1.5rem' }, children: _jsx("p", { className: "text-primary", style: { fontSize: '0.9rem', fontWeight: '600' }, children: trainer.specialty }) }), _jsxs("div", { style: {
-                                                display: 'flex',
-                                                justifyContent: 'center',
-                                                gap: '2.5rem',
-                                                padding: '1rem',
-                                                background: 'rgba(255, 255, 255, 0.03)',
-                                                borderRadius: '12px',
-                                                marginBottom: '1.5rem',
-                                                border: '1px solid var(--clr-glass-border)'
-                                            }, children: [_jsxs("div", { children: [_jsxs("p", { className: "stat-value", style: { fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'center' }, children: [trainer.rating || 0, " ", _jsx(Star, { size: 14, fill: "currentColor" })] }), _jsx("p", { className: "text-muted", style: { fontSize: '0.75rem' }, children: "Rating" })] }), _jsx("div", { style: { width: '1px', background: 'var(--clr-glass-border)' } }), _jsxs("div", { children: [_jsx("p", { className: "stat-value", style: { fontSize: '1.1rem' }, children: trainer.studentsCount || 0 }), _jsx("p", { className: "text-muted", style: { fontSize: '0.75rem' }, children: "Students" })] })] }), _jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '1.5rem' }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: 'var(--clr-text-muted)', fontSize: '0.85rem' }, children: [_jsx(Mail, { size: 14 }), _jsx("span", { children: trainer.user?.email || trainer.email })] }), (trainer.user?.phone || trainer.phone) && (_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: 'var(--clr-text-muted)', fontSize: '0.85rem' }, children: [_jsx(Phone, { size: 14 }), _jsx("span", { children: trainer.user?.phone || trainer.phone })] }))] }), _jsxs("button", { className: "btn btn-secondary w-full", style: { justifyContent: 'center' }, onClick: () => handleViewMembers(trainer), children: [_jsx(Users, { size: 16 }), "View Members"] })] })] })] }, trainer._id))) })), _jsxs(Modal, { isOpen: isMemberModalOpen, onClose: () => setIsMemberModalOpen(false), title: `Members assigned to ${selectedTrainer?.user?.name || selectedTrainer?.name || 'Trainer'}`, children: [loadingMembers ? (_jsxs("div", { className: "loading-state", style: { padding: '2rem', textAlign: 'center' }, children: [_jsx("div", { className: "spinner" }), _jsx("p", { className: "text-muted", style: { marginTop: '1rem' }, children: "Fetching members..." })] })) : (_jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '60vh', overflowY: 'auto', padding: '0.5rem' }, children: trainerMembers.length === 0 ? (_jsx("div", { className: "text-center", style: { padding: '2rem' }, children: _jsx("p", { className: "text-muted", children: "No members assigned to this trainer yet." }) })) : (trainerMembers.map((member) => (_jsxs("div", { className: "glass-panel", style: { padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }, children: [_jsx("div", { className: "avatar", style: { width: '40px', height: '40px', fontSize: '1rem' }, children: member.user?.name?.charAt(0) }), _jsxs("div", { style: { flex: 1 }, children: [_jsx("p", { style: { fontWeight: '600', fontSize: '0.95rem' }, children: member.user?.name }), _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.25rem' }, children: [_jsx("span", { className: `status-badge ${member.status}`, style: { fontSize: '0.65rem', padding: '0.15rem 0.5rem' }, children: member.status }), _jsxs("span", { className: "text-muted", style: { fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }, children: [_jsx(Zap, { size: 10, className: "text-primary" }), member.currentPlan?.name || 'No Plan'] })] })] }), _jsxs("div", { style: { textAlign: 'right' }, children: [_jsx("p", { className: "text-muted", style: { fontSize: '0.7rem', textTransform: 'uppercase' }, children: "Joined" }), _jsx("p", { style: { fontSize: '0.8rem' }, children: new Date(member.createdAt).toLocaleDateString() })] })] }, member._id)))) })), _jsx("div", { style: { marginTop: '2rem', borderTop: '1px solid var(--clr-glass-border)', paddingTop: '1rem' }, children: _jsx("button", { className: "btn btn-secondary w-full", onClick: () => setIsMemberModalOpen(false), children: "Close" }) })] }), !loading && filteredTrainers.length === 0 && (_jsxs("div", { className: "glass-panel text-center", style: { padding: '4rem' }, children: [_jsx(UserSquare2, { size: 48, className: "text-muted", style: { marginBottom: '1rem', opacity: 0.5 } }), _jsx("h3", { children: "No trainers found" }), _jsx("p", { className: "text-muted", children: "Try adjusting your search query or add a new trainer." })] }))] }));
+                                    }, children: trainer.user?.name?.charAt(0) || trainer.name?.charAt(0) }), _jsxs("div", { className: "text-center", children: [_jsx("h3", { style: { fontSize: '1.35rem', marginBottom: '0.25rem' }, children: trainer.user?.name || trainer.name }), _jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }, children: [_jsx("span", { className: `status-badge ${trainer.status || 'active'}`, children: trainer.status || 'active' }), _jsxs("span", { style: {
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.25rem',
+                                                        fontSize: '0.75rem',
+                                                        padding: '0.15rem 0.5rem',
+                                                        borderRadius: '12px',
+                                                        background: 'rgba(139, 92, 246, 0.12)',
+                                                        color: 'var(--clr-primary)'
+                                                    }, children: [_jsx(Building2, { size: 12 }), " ", trainer.branchCode || 'MAIN'] })] }), _jsx("div", { className: "info-pill", style: { display: 'inline-block', padding: '0.5rem 1rem', borderRadius: '30px', background: 'rgba(255, 255, 255, 0.05)', marginBottom: '1.5rem' }, children: _jsx("p", { className: "text-primary", style: { fontSize: '0.9rem', fontWeight: '600' }, children: trainer.specialty || 'General Fitness' }) }), _jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '1.5rem' }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: 'var(--clr-text-muted)', fontSize: '0.85rem' }, children: [_jsx(Mail, { size: 14 }), _jsx("span", { children: trainer.user?.email || trainer.email })] }), (trainer.user?.phone || trainer.phone) && (_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: 'var(--clr-text-muted)', fontSize: '0.85rem' }, children: [_jsx(Phone, { size: 14 }), _jsx("span", { children: trainer.user?.phone || trainer.phone })] }))] }), _jsxs("button", { className: "btn btn-secondary w-full", style: { fontSize: '0.85rem' }, onClick: () => handleViewMembers(trainer), children: [_jsx(Users, { size: 16 }), "View Assigned Members"] })] })] })] }, trainer._id))) }))] }));
 };
 export default TrainersPage;

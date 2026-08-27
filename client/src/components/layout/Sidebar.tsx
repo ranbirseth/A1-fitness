@@ -5,11 +5,15 @@ import {
   Users, 
   UserSquare2, 
   CreditCard, 
+  FileText,
   CalendarCheck, 
   Settings, 
   LogOut,
   Dumbbell,
   ClipboardList,
+  BarChart3,
+  Building2,
+  Shield,
   X
 } from 'lucide-react';
 import { useAuthStore } from '../../store/auth.store';
@@ -35,18 +39,22 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   };
 
   const navItems = [
-    { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} />, roles: ['admin', 'trainer'] },
-    { name: 'Members', path: '/members', icon: <Users size={20} />, roles: ['admin', 'trainer'] },
-    { name: 'Trainers', path: '/trainers', icon: <UserSquare2 size={20} />, roles: ['admin'] },
-    { name: 'Plans', path: '/plans', icon: <ClipboardList size={20} />, roles: ['admin'] },
-    { name: 'Attendance', path: '/attendance', icon: <CalendarCheck size={20} />, roles: ['admin', 'trainer'] },
+    { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} />, roles: ['superadmin', 'admin', 'trainer'] },
+    { name: 'Analytics', path: '/analytics', icon: <BarChart3 size={20} />, roles: ['superadmin', 'admin', 'trainer'] },
+    { name: 'Branches', path: '/branches', icon: <Building2 size={20} />, roles: ['superadmin', 'admin'] },
+    { name: 'Members', path: '/members', icon: <Users size={20} />, roles: ['superadmin', 'admin', 'trainer'] },
+    { name: 'Admins', path: '/admins', icon: <Shield size={20} />, roles: ['superadmin'] },
+    { name: 'Trainers', path: '/trainers', icon: <UserSquare2 size={20} />, roles: ['superadmin', 'admin'] },
+    { name: 'Plans', path: '/plans', icon: <ClipboardList size={20} />, roles: ['superadmin', 'admin'] },
+    { name: 'Attendance', path: '/attendance', icon: <CalendarCheck size={20} />, roles: ['superadmin', 'admin', 'trainer'] },
     { name: 'My Attendance', path: '/my-attendance', icon: <CalendarCheck size={20} />, roles: ['member'] },
-    { name: 'Workouts & Diet', path: '/workouts', icon: <Dumbbell size={20} />, roles: ['admin', 'trainer', 'member'] },
-    { name: 'Payments', path: '/payments', icon: <CreditCard size={20} />, roles: ['admin', 'member'] },
+    { name: 'Workouts & Diet', path: '/workouts', icon: <Dumbbell size={20} />, roles: ['superadmin', 'admin', 'trainer', 'member'] },
+    { name: 'Payments', path: '/payments', icon: <CreditCard size={20} />, roles: ['superadmin', 'admin', 'member'] },
+    { name: 'Invoices', path: '/invoices', icon: <FileText size={20} />, roles: ['superadmin', 'admin', 'trainer', 'member'] },
   ];
 
   const filteredNavItems = navItems.filter(item => 
-    !item.roles || (user && item.roles.includes(user.role))
+    !item.roles || (user && (user.role === 'superadmin' ? item.name !== 'My Attendance' : item.roles.includes(user.role)))
   );
 
   return (

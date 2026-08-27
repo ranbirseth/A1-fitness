@@ -4,20 +4,59 @@ const { ClassSlot } = require("../models/generic.model");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { sendResponse } = require("../utils/response");
 const { getPagination } = require("../utils/pagination");
+const { enforceBranchOwnership } = require("../middlewares/branchScope.middleware");
+
+const getScopedBranchCode = (req) => {
+  if (req.user.role !== "superadmin") return (req.user.branchCode || "MAIN").trim().toUpperCase();
+  const requested = req.query.branchCode;
+  if (requested && requested !== "ALL" && requested !== "all") return requested.trim().toUpperCase();
+  return undefined;
+};
+
+const findTargetMember = async (req) => {
+  const { memberId } = req.body;
+  if (req.user.role === "member") {
+    if (memberId && (!req.member || String(memberId) !== String(req.member._id))) {
+      throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
+    }
+    return req.member || null;
+  }
+  const query = memberId ? { _id: memberId } : { user: req.user._id };
+  if (req.user.role !== "superadmin") query.gymId = req.gymId;
+  return Member.findOne(query);
+};
 
 const bookClassSlot = asyncHandler(async (req, res) => {
-  const { classSlotId, memberId } = req.body;
-  const slot = await ClassSlot.findById(classSlotId);
-  if (!slot) throw Object.assign(new Error("Class slot not found"), { statusCode: 404 });
-  const member = memberId ? await Member.findById(memberId) : await Member.findOne({ user: req.user._id });
+  const { classSlotId } = req.body;
+  const member = await findTargetMember(req);
   if (!member) throw Object.assign(new Error("Member not found"), { statusCode: 404 });
-  const booking = await Booking.create({ classSlot: slot._id, member: member._id });
+  if (!enforceBranchOwnership(member.branchCode, req)) {
+    throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
+  }
+
+  const slotQuery = { _id: classSlotId };
+  if (req.user.role !== "superadmin") slotQuery.gymId = req.gymId;
+  const slot = await ClassSlot.findOne(slotQuery);
+  if (!slot || String(slot.gymId) !== String(member.gymId)) {
+    throw Object.assign(new Error("Class slot not found"), { statusCode: 404 });
+  }
+
+  const booking = await Booking.create({ classSlot: slot._id, member: member._id, gymId: member.gymId });
   sendResponse(res, { status: 201, message: "Class slot booked", data: booking });
 });
 
 const listBookings = asyncHandler(async (req, res) => {
   const { skip, limit, page } = getPagination(req.query);
-  const filter = req.user.role === "member" ? { member: (await Member.findOne({ user: req.user._id }))?._id } : {};
+  let filter;
+  if (req.user.role === "member") {
+    filter = req.member ? { gymId: req.gymId, member: req.member._id } : { _id: null };
+  } else {
+    const memberQuery = { gymId: req.gymId };
+    const branchCode = getScopedBranchCode(req);
+    if (branchCode) memberQuery.branchCode = branchCode;
+    const memberIds = (await Member.find(memberQuery).select("_id").lean()).map((m) => m._id);
+    filter = { gymId: req.gymId, member: { $in: memberIds } };
+  }
   const [items, total] = await Promise.all([
     Booking.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate("classSlot member"),
     Booking.countDocuments(filter)
@@ -28,6 +67,19 @@ const listBookings = asyncHandler(async (req, res) => {
 const cancelBooking = asyncHandler(async (req, res) => {
   const booking = await Booking.findById(req.params.id);
   if (!booking) throw Object.assign(new Error("Booking not found"), { statusCode: 404 });
+
+  const owner = await Member.findById(booking.member).select("gymId branchCode").lean();
+  if (!owner || (req.user.role !== "superadmin" && owner.gymId !== req.gymId)) {
+    throw Object.assign(new Error("Booking not found"), { statusCode: 404 });
+  }
+  if (req.user.role === "member") {
+    if (!req.member || !booking.member.equals(req.member._id)) {
+      throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
+    }
+  } else if (!enforceBranchOwnership(owner.branchCode, req)) {
+    throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
+  }
+
   booking.status = "cancelled";
   await booking.save();
   sendResponse(res, { message: "Booking cancelled", data: booking });

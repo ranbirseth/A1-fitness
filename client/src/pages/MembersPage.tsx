@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Search, Plus, Filter, MoreVertical, Edit2, Trash2, Shield, Calendar, CreditCard, ChevronRight, Zap, RefreshCw, AlertCircle, Snowflake, PlayCircle, UserX, UserCheck, UserSquare2 } from 'lucide-react';
-import { getMembers, createMember, deleteMember, assignPlan, renewPlan, cancelPlan, freezePlan, resumePlan, approveMember, updateMember } from '../features/members/members.api';
+import { Users, Search, Plus, Filter, Edit2, Trash2, Shield, Calendar, CreditCard, Zap, Building2, UserX, UserCheck, UserSquare2 } from 'lucide-react';
+import { getMembers, createMember, deleteMember, assignPlan, renewPlan, upgradePlan, cancelPlan, freezePlan, resumePlan, approveMember, updateMember } from '../features/members/members.api';
 import { getPlans } from '../features/plans/plans.api';
 import { getTrainers } from '../features/trainers/trainers.api';
 import { recordPayment } from '../features/payments/payments.api';
 import { useDebounce } from '../hooks/useDebounce';
 import { useAuthStore } from '../store/auth.store';
+import { useBranchStore } from '../store/branch.store';
 import Modal from '../components/Modal';
 
 const MembersPage: React.FC = () => {
   const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
+  const { branches, selectedBranch: globalBranch, setSelectedBranch } = useBranchStore();
+  const isSuperAdmin = user?.role === 'superadmin';
+  const isAdmin = user?.role === 'admin' || isSuperAdmin;
   const isTrainer = user?.role === 'trainer';
 
   const [members, setMembers] = useState<any[]>([]);
@@ -23,7 +26,13 @@ const MembersPage: React.FC = () => {
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterBranch, setFilterBranch] = useState<string>(globalBranch);
   const debouncedSearch = useDebounce(searchQuery, 500);
+
+  const defaultBranch = isSuperAdmin 
+    ? (filterBranch !== 'ALL' ? filterBranch : (branches[0]?.branchCode || 'MAIN'))
+    : (user?.branchCode || 'MAIN');
+
   const [formData, setFormData] = useState({ 
     name: '', 
     email: '', 
@@ -31,14 +40,17 @@ const MembersPage: React.FC = () => {
     password: 'Password123',
     planId: '',
     trainerId: '',
-    branchCode: 'MAIN'
+    branchCode: defaultBranch
   });
+
   const [editFormData, setEditFormData] = useState({
     name: '',
     email: '',
     phone: '',
-    trainerId: ''
+    trainerId: '',
+    branchCode: 'MAIN'
   });
+
   const [subFormData, setSubFormData] = useState({
     planId: '',
     amount: 0,
@@ -46,11 +58,19 @@ const MembersPage: React.FC = () => {
     recordPayment: true
   });
 
-  const fetchMembers = async (search = '', status = 'all') => {
+  // Sync filterBranch with globalBranch changes
+  useEffect(() => {
+    setFilterBranch(globalBranch);
+  }, [globalBranch]);
+
+  const fetchMembersList = async (search = '', status = 'all', branch = filterBranch) => {
     setLoading(true);
     try {
       const params: any = { search, limit: 100 };
       if (status !== 'all') params.status = status;
+      if (isSuperAdmin && branch && branch !== 'ALL') {
+        params.branchCode = branch;
+      }
       const res = await getMembers(params);
       setMembers(res.data?.data?.items || []);
     } catch (error) {
@@ -60,9 +80,13 @@ const MembersPage: React.FC = () => {
     }
   };
 
-  const fetchPlans = async () => {
+  const fetchPlansList = async (branch = filterBranch) => {
     try {
-      const res = await getPlans();
+      const params: any = {};
+      if (isSuperAdmin && branch && branch !== 'ALL') {
+        params.branchCode = branch;
+      }
+      const res = await getPlans(params);
       const planData = res.data?.data;
       setPlans(Array.isArray(planData) ? planData : (planData?.items || []));
     } catch (error) {
@@ -71,9 +95,13 @@ const MembersPage: React.FC = () => {
     }
   };
 
-  const fetchTrainers = async () => {
+  const fetchTrainersList = async (branch = filterBranch) => {
     try {
-      const res = await getTrainers();
+      const params: any = {};
+      if (isSuperAdmin && branch && branch !== 'ALL') {
+        params.branchCode = branch;
+      }
+      const res = await getTrainers(params);
       const trainerData = res.data?.data;
       setTrainers(Array.isArray(trainerData) ? trainerData : (trainerData?.items || []));
     } catch (error) {
@@ -82,18 +110,27 @@ const MembersPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchMembers(debouncedSearch, filterStatus);
-    fetchPlans();
-    fetchTrainers();
-  }, [debouncedSearch, filterStatus]);
+    fetchMembersList(debouncedSearch, filterStatus, filterBranch);
+    fetchPlansList(filterBranch);
+    fetchTrainersList(filterBranch);
+  }, [debouncedSearch, filterStatus, filterBranch]);
+
+  const handleBranchChange = (newBranch: string) => {
+    setFilterBranch(newBranch);
+    if (isSuperAdmin) setSelectedBranch(newBranch);
+  };
 
   const handleCreateMember = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createMember(formData);
+      const payload = {
+        ...formData,
+        branchCode: isSuperAdmin ? formData.branchCode : (user?.branchCode || 'MAIN')
+      };
+      await createMember(payload);
       setIsModalOpen(false);
-      setFormData({ name: '', email: '', phone: '', password: 'Password123', planId: '', trainerId: '', branchCode: 'MAIN' });
-      fetchMembers();
+      setFormData({ name: '', email: '', phone: '', password: 'Password123', planId: '', trainerId: '', branchCode: defaultBranch });
+      fetchMembersList(debouncedSearch, filterStatus, filterBranch);
     } catch (error: any) {
       alert(error.response?.data?.message || 'Failed to create member');
     }
@@ -105,7 +142,8 @@ const MembersPage: React.FC = () => {
       name: member.user?.name || '',
       email: member.user?.email || '',
       phone: member.user?.phone || '',
-      trainerId: member.trainer?._id || ''
+      trainerId: member.trainer?._id || '',
+      branchCode: member.branchCode || member.user?.branchCode || 'MAIN'
     });
     setIsEditModalOpen(true);
   };
@@ -115,145 +153,107 @@ const MembersPage: React.FC = () => {
     try {
       await updateMember(selectedMember._id, editFormData);
       setIsEditModalOpen(false);
-      fetchMembers();
+      fetchMembersList(debouncedSearch, filterStatus, filterBranch);
     } catch (error: any) {
       alert(error.response?.data?.message || 'Update failed');
     }
   };
 
+  const handleDeleteMember = async (id: string) => {
+    if (!window.confirm('Are you sure you want to permanently delete this member and all associated data?')) return;
+    try {
+      await deleteMember(id);
+      fetchMembersList(debouncedSearch, filterStatus, filterBranch);
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to delete member');
+    }
+  };
+
+  const handleToggleStatus = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'inactive' ? 'active' : 'inactive';
+    const actionName = newStatus === 'inactive' ? 'deactivate' : 'reactivate';
+    if (!window.confirm(`Are you sure you want to ${actionName} this member?`)) return;
+    try {
+      await updateMember(id, { status: newStatus });
+      fetchMembersList(debouncedSearch, filterStatus, filterBranch);
+    } catch (error: any) {
+      alert(error.response?.data?.message || `Failed to ${actionName} member`);
+    }
+  };
+
+  const handleApprove = async (id: string) => {
+    try {
+      await approveMember(id);
+      fetchMembersList(debouncedSearch, filterStatus, filterBranch);
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Approval failed');
+    }
+  };
+
   const handleOpenSubscription = (member: any) => {
     setSelectedMember(member);
+    const plan = plans.find(p => p._id === member.currentPlan?._id) || plans[0];
     setSubFormData({
-      planId: member.currentPlan?._id || '',
-      amount: member.currentPlan?.price || 0,
+      planId: plan?._id || '',
+      amount: plan?.price || 0,
       note: '',
       recordPayment: true
     });
     setIsSubModalOpen(true);
   };
 
-  const handleSubscriptionAction = async (action: 'assign' | 'renew' | 'cancel' | 'freeze' | 'resume') => {
+  const handleSubscriptionAction = async (action: 'assign' | 'renew' | 'upgrade' | 'freeze' | 'resume' | 'cancel') => {
     if (!selectedMember) return;
     try {
-      if (action === 'cancel') {
-        if (window.confirm('Are you sure you want to cancel this subscription?')) {
-          await cancelPlan(selectedMember._id);
-        } else return;
-      } else if (action === 'freeze') {
-        if (window.confirm('Freeze this plan? Membership will be paused.')) {
-          await freezePlan(selectedMember._id);
-        } else return;
-      } else if (action === 'resume') {
-        await resumePlan(selectedMember._id);
-      } else {
-        // Assign or Renew
-        if (action === 'assign') {
-          await assignPlan(selectedMember._id, { planId: subFormData.planId });
-        } else {
-          await renewPlan(selectedMember._id, { planId: subFormData.planId });
-        }
+      if (!subFormData.planId && ['assign', 'renew', 'upgrade'].includes(action)) {
+        alert('Please select a plan first');
+        return;
+      }
+      if (action === 'assign') await assignPlan(selectedMember._id, { planId: subFormData.planId });
+      else if (action === 'renew') await renewPlan(selectedMember._id, { planId: subFormData.planId });
+      else if (action === 'upgrade') await upgradePlan(selectedMember._id, { planId: subFormData.planId });
+      else if (action === 'freeze') await freezePlan(selectedMember._id);
+      else if (action === 'resume') await resumePlan(selectedMember._id);
+      else if (action === 'cancel') await cancelPlan(selectedMember._id);
 
-        // Record payment (Paid or Pending)
+      if (subFormData.recordPayment && subFormData.amount > 0 && ['assign', 'renew', 'upgrade'].includes(action)) {
         await recordPayment({
           member: selectedMember._id,
           plan: subFormData.planId,
           amount: subFormData.amount,
-          method: 'cash',
-          status: subFormData.recordPayment ? 'paid' : 'pending',
-          note: subFormData.note
+          note: subFormData.note,
+          status: 'paid'
         });
       }
       setIsSubModalOpen(false);
-      fetchMembers();
+      fetchMembersList(debouncedSearch, filterStatus, filterBranch);
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Action failed');
-    }
-  };
-
-  const handleApprove = async (id: string) => {
-    if (!window.confirm('Approve this member? They will be moved to active status.')) return;
-    try {
-      await approveMember(id);
-      fetchMembers();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Approval failed');
-    }
-  };
-
-  const handleToggleStatus = async (id: string, currentStatus: string) => {
-    const isDeactivating = currentStatus !== 'inactive';
-    const newStatus = isDeactivating ? 'inactive' : 'active';
-    
-    let reason = '';
-    if (isDeactivating) {
-      const input = window.prompt(
-        'Are you sure you want to deactivate this member? They will lose all access immediately.\n\nPlease enter a reason for deactivation:',
-        'Administrative deactivation'
-      );
-      if (input === null) return; // Cancelled
-      reason = input.trim() || 'Administrative deactivation';
-    } else {
-      if (!window.confirm('Reactivate this member?')) return;
-    }
-
-    try {
-      await updateMember(id, { status: newStatus, reason });
-      fetchMembers();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Status update failed');
-    }
-  };
-
-  const handleDiscard = async (id: string) => {
-    if (!window.confirm('Discard this membership request? The member will be notified.')) return;
-    try {
-      await updateMember(id, { status: 'inactive' });
-      fetchMembers();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Discard failed');
-    }
-  };
-
-  const handleDeleteMember = async (id: string) => {
-    if (!window.confirm('Are you sure you want to PERMANENTLY delete this member and ALL their associated data (payments, attendance, progress)? This action cannot be undone.')) return;
-    try {
-      await deleteMember(id);
-      fetchMembers();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Deletion failed');
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active': return 'text-success bg-success-light';
-      case 'expired': return 'text-danger bg-danger-light';
-      case 'pending': return 'text-warning bg-warning-light';
-      case 'cancelled': return 'text-muted bg-glass';
-      default: return 'text-muted bg-glass';
+      alert(error.response?.data?.message || `Action ${action} failed`);
     }
   };
 
   return (
     <div>
-      <div className="page-header" style={{ marginBottom: '2rem' }}>
-        <div className="flex-responsive" style={{ gap: '1.5rem' }}>
-          <div>
-            <h1>Members Management</h1>
-            <p className="text-muted">Manage member subscriptions, plans, and offline payments.</p>
-          </div>
-          {(isAdmin || isTrainer) && (
-            <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
-              <Plus size={18} />
-              Add Member
+      <div className="page-header flex-responsive" style={{ marginBottom: '2rem' }}>
+        <div>
+          <h1>Members Directory</h1>
+          <p className="text-muted">Manage gym memberships, profiles, and attendance credentials.</p>
+        </div>
+        <div>
+          {isAdmin && (
+            <button className="btn btn-primary" onClick={() => {
+              setFormData({ name: '', email: '', phone: '', password: 'Password123', planId: '', trainerId: '', branchCode: defaultBranch });
+              setIsModalOpen(true);
+            }}>
+              <Plus size={18} /> Add Member
             </button>
           )}
         </div>
       </div>
 
-      <div className="flex-responsive" style={{ marginBottom: '2rem', gap: '1rem' }}>
-        <div className="flex-responsive" style={{ gap: '0.75rem', justifyContent: 'flex-start', width: '100%', maxWidth: '500px' }}>
-          <div className="search-bar" style={{ flex: 1, minWidth: '150px', background: 'var(--clr-bg-base)', padding: '0.4rem 1rem' }}>
+      <div className="flex-responsive" style={{ marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }}>
+        <div className="flex-responsive" style={{ gap: '0.75rem', justifyContent: 'flex-start', width: '100%', flexWrap: 'wrap' }}>
+          <div className="search-bar" style={{ flex: '1 1 200px', minWidth: '150px', background: 'var(--clr-bg-base)', padding: '0.4rem 1rem' }}>
             <Search size={16} className="text-muted" />
             <input 
               placeholder="Search members..." 
@@ -262,31 +262,43 @@ const MembersPage: React.FC = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
+
           <div className="filter-container" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--clr-bg-base)', padding: '0.4rem 1rem', borderRadius: '12px', border: '1px solid var(--clr-glass-border)', cursor: 'pointer' }}>
             <Filter size={16} className="text-muted" />
             <select 
               className="filter-select" 
-              style={{ 
-                background: 'transparent', 
-                border: 'none', 
-                color: 'var(--clr-text-main)', 
-                fontSize: '0.85rem',
-                outline: 'none',
-                cursor: 'pointer',
-                paddingRight: '1rem'
-              }}
+              style={{ background: 'transparent', border: 'none', color: 'var(--clr-text-main)', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
             >
-              <option value="all">Filter: All Members</option>
-              <option value="active">Filter: Active</option>
-              <option value="pending">Filter: Pending Approval</option>
-              <option value="expired">Filter: Expired</option>
-              <option value="frozen">Filter: Frozen</option>
-              <option value="cancelled">Filter: Cancelled</option>
-              <option value="inactive">Filter: Inactive</option>
+              <option value="all" style={{ background: '#1e1b4b', color: '#fff' }}>Filter: All Statuses</option>
+              <option value="active" style={{ background: '#1e1b4b', color: '#fff' }}>Active</option>
+              <option value="pending" style={{ background: '#1e1b4b', color: '#fff' }}>Pending Approval</option>
+              <option value="expired" style={{ background: '#1e1b4b', color: '#fff' }}>Expired</option>
+              <option value="frozen" style={{ background: '#1e1b4b', color: '#fff' }}>Frozen</option>
+              <option value="cancelled" style={{ background: '#1e1b4b', color: '#fff' }}>Cancelled</option>
+              <option value="inactive" style={{ background: '#1e1b4b', color: '#fff' }}>Inactive</option>
             </select>
           </div>
+
+          {isSuperAdmin && (
+            <div className="filter-container" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--clr-bg-base)', padding: '0.4rem 1rem', borderRadius: '12px', border: '1px solid var(--clr-glass-border)', cursor: 'pointer' }}>
+              <Building2 size={16} style={{ color: 'var(--clr-primary)' }} />
+              <select 
+                className="filter-select" 
+                style={{ background: 'transparent', border: 'none', color: 'var(--clr-text-main)', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                value={filterBranch}
+                onChange={(e) => handleBranchChange(e.target.value)}
+              >
+                <option value="ALL" style={{ background: '#1e1b4b', color: '#fff' }}>Branch: All Branches</option>
+                {branches.map(b => (
+                  <option key={b._id} value={b.branchCode} style={{ background: '#1e1b4b', color: '#fff' }}>
+                    {b.name} ({b.branchCode})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
@@ -309,6 +321,25 @@ const MembersPage: React.FC = () => {
               <label className="form-label">Password</label>
               <input className="form-input" type="password" required value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
             </div>
+
+            {isSuperAdmin && (
+              <div className="form-group">
+                <label className="form-label">Branch Assignment</label>
+                <select 
+                  className="form-input" 
+                  value={formData.branchCode} 
+                  onChange={e => setFormData({...formData, branchCode: e.target.value})}
+                  required
+                >
+                  {branches.map(b => (
+                    <option key={b._id} value={b.branchCode}>
+                      {b.name} ({b.branchCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="form-group">
               <label className="form-label">Initial Plan (Optional)</label>
               <select className="form-input" value={formData.planId} onChange={e => setFormData({...formData, planId: e.target.value})}>
@@ -369,6 +400,24 @@ const MembersPage: React.FC = () => {
                 required
               />
             </div>
+
+            {isSuperAdmin && (
+              <div className="form-group">
+                <label className="form-label">Branch</label>
+                <select 
+                  className="form-input"
+                  value={editFormData.branchCode} 
+                  onChange={e => setEditFormData({ ...editFormData, branchCode: e.target.value })}
+                >
+                  {branches.map(b => (
+                    <option key={b._id} value={b.branchCode}>
+                      {b.name} ({b.branchCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="form-group">
               <label className="form-label">Change Trainer</label>
               <select 
@@ -400,6 +449,7 @@ const MembersPage: React.FC = () => {
             <div style={{ flex: 1 }}>
               <div className="glass-panel" style={{ marginBottom: '1.5rem', padding: '1rem' }}>
                 <p>Member: <strong>{selectedMember.user?.name}</strong></p>
+                <p>Branch: <strong style={{ color: 'var(--clr-primary)' }}>{selectedMember.branchCode || 'MAIN'}</strong></p>
                 <p>Status: <span className={`status-badge ${selectedMember.status}`}>{selectedMember.status}</span></p>
                 <p>Payment: <span className={`status-badge ${selectedMember.paymentStatus === 'paid' ? 'active' : 'pending'}`}>{selectedMember.paymentStatus}</span></p>
               </div>
@@ -443,10 +493,14 @@ const MembersPage: React.FC = () => {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.5rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.5rem' }}>
                 <button className="btn btn-primary" onClick={() => handleSubscriptionAction('assign')}>Assign</button>
                 <button className="btn btn-secondary" onClick={() => handleSubscriptionAction('renew')}>Renew</button>
+                <button className="btn btn-warning" onClick={() => handleSubscriptionAction('upgrade')}>Upgrade</button>
               </div>
+              <p className="text-muted" style={{ fontSize: '0.72rem', marginBottom: '1.5rem' }}>
+                Assign/Upgrade start a new term from today. Renew continues from the current expiry while the membership is still active.
+              </p>
             </div>
 
             <div style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)', position: 'sticky', bottom: 0, background: 'var(--clr-bg-sidebar)', zIndex: 10, display: 'flex', gap: '0.75rem' }}>
@@ -476,7 +530,22 @@ const MembersPage: React.FC = () => {
               
               <h3 style={{ fontSize: '1.1rem', marginBottom: '0.25rem' }}>{member.user?.name}</h3>
               <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.25rem' }}>{member.user?.email}</p>
-              <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '1rem', fontWeight: 600 }}>ID: {member.secretCode}</p>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                <span className="text-muted" style={{ fontSize: '0.8rem', fontWeight: 600 }}>ID: {member.secretCode}</span>
+                <span style={{ 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  gap: '0.25rem', 
+                  fontSize: '0.75rem', 
+                  padding: '0.15rem 0.5rem', 
+                  borderRadius: '12px', 
+                  background: 'rgba(139, 92, 246, 0.12)', 
+                  color: 'var(--clr-primary)' 
+                }}>
+                  <Building2 size={12} /> {member.branchCode || 'MAIN'}
+                </span>
+              </div>
               
               <div className="glass-panel" style={{ padding: '0.75rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.03)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>

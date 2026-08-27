@@ -1,11 +1,13 @@
 import http from "../../api/http";
 export const getMembers = (params = {}) => {
-    const { page = 1, limit = 10, search = "", status, trainerId } = params;
+    const { page = 1, limit = 10, search = "", status, trainerId, branchCode } = params;
     let url = `/members?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`;
     if (status)
         url += `&status=${status}`;
     if (trainerId)
         url += `&trainerId=${trainerId}`;
+    if (branchCode)
+        url += `&branchCode=${branchCode}`;
     return http.get(url);
 };
 export const createMember = (payload) => http.post("/members", payload);

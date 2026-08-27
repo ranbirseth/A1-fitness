@@ -1,0 +1,79 @@
+warning: in the working copy of 'client/src/App.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/App.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/components/layout/Header.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/components/layout/Sidebar.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/components/layout/Sidebar.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/features/attendance/attendance.api.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/features/dashboard/dashboard.api.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/features/members/members.api.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/features/members/members.api.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/features/payments/payments.api.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/features/payments/payments.api.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/features/plans/plans.api.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/features/trainers/trainers.api.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/features/trainers/trainers.api.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/pages/DashboardPage.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/pages/LoginPage.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/pages/MembersPage.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/pages/QRAttendancePage.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/pages/TrainersPage.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/store/auth.store.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'client/src/styles/layout.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/controllers/attendance.controller.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/controllers/auth.controller.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/controllers/dashboard.controller.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/controllers/genericCrud.controller.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/controllers/member.controller.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/controllers/payment.controller.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/controllers/plan.controller.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/controllers/trainer.controller.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/controllers/user.controller.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/models/attendance.model.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/models/generic.model.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/models/payment.model.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/models/plan.model.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/models/user.model.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/package-lock.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/routes/attendance.routes.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/routes/dashboard.routes.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/routes/generic.routes.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/routes/member.routes.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/routes/payment.routes.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/routes/trainer.routes.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/server.js', LF will be replaced by CRLF the next time Git touches it
+ client/src/App.js                                |   6 [32m+[m[31m-[m
+ client/src/App.tsx                               |  20 [32m+[m
+ client/src/components/layout/Header.tsx          |  57 [32m++[m[31m-[m
+ client/src/components/layout/Sidebar.js          |   7 [32m+[m[31m-[m
+ client/src/components/layout/Sidebar.tsx         |  22 [32m+[m[31m-[m
+ client/src/features/attendance/attendance.api.ts |   6 [32m+[m[31m-[m
+ client/src/features/dashboard/dashboard.api.ts   |   2 [32m+[m[31m-[m
+ client/src/features/members/members.api.js       |   4 [32m+[m[31m-[m
+ client/src/features/members/members.api.ts       |   5 [32m+[m[31m-[m
+ client/src/features/payments/payments.api.js     |  54 [32m++[m[31m-[m
+ client/src/features/payments/payments.api.ts     |  92 [32m++++[m[31m-[m
+ client/src/features/plans/plans.api.ts           |   2 [32m+[m[31m-[m
+ client/src/features/trainers/trainers.api.js     |   2 [32m+[m[31m-[m
+ client/src/features/trainers/trainers.api.ts     |   2 [32m+[m[31m-[m
+ client/src/pages/DashboardPage.tsx               |  58 [32m++[m[31m-[m
+ client/src/pages/LoginPage.js                    |   8 [32m+[m[31m-[m
+ client/src/pages/MembersPage.tsx                 | 336 [32m+++++++++[m[31m-------[m
+ client/src/pages/QRAttendancePage.js             |   2 [32m+[m[31m-[m
+ client/src/pages/TrainersPage.tsx                | 342 [32m++++++++[m[31m--------[m
+ client/src/store/auth.store.ts                   |   1 [32m+[m
+ client/src/styles/layout.css                     |  41 [32m++[m
+ server/controllers/attendance.controller.js      |  82 [32m+++[m[31m-[m
+ server/controllers/auth.controller.js            |   1 [32m+[m
+ server/controllers/dashboard.controller.js       |  67 [32m+++[m[31m-[m
+ server/controllers/genericCrud.controller.js     |  20 [32m+[m[31m-[m
+ server/controllers/member.controller.js          |  93 [32m++++[m[31m-[m
+ server/controllers/payment.controller.js         | 491 [32m++++++++++++++++++++[m[31m---[m
+ server/controllers/plan.controller.js            |  93 [32m++++[m[31m-[m
+ server/controllers/trainer.controller.js         |  85 [32m+++[m[31m-[m
+ server/controllers/user.controller.js            |   1 [32m+[m
+ server/models/attendance.model.js                |   3 [32m+[m[31m-[m
+ server/models/generic.model.js                   |  18 [32m+[m[31m-[m
+ server/models/payment.model.js                   |   3 [32m+[m[31m-[m
+ server/models/plan.model.js                      |   5 [32m+[m[31m-[m
+ serv

@@ -1,2 +1,2 @@
 import http from "../../api/http";
-export const getDashboardStats = () => http.get("/dashboard/stats");
+export const getDashboardStats = (params) => http.get("/dashboard/stats", { params });

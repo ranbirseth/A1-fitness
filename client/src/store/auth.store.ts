@@ -10,6 +10,7 @@ type User = {
   address?: string;
   emergencyContact?: string;
   role: "superadmin" | "admin" | "trainer" | "member";
+  branchCode?: string;
   status?: "active" | "pending" | "inactive" | "expired" | "cancelled" | "frozen";
   paymentStatus?: "paid" | "pending";
 } | null;

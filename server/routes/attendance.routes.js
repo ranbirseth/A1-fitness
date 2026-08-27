@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const { protect, protectOptional, authorize } = require("../middlewares/auth.middleware");
+const { branchScope } = require("../middlewares/branchScope.middleware");
 const {
   markAttendance,
   memberCheckIn,
@@ -19,7 +20,7 @@ const {
 
 router.post("/mark", protectOptional, markAttendance);
 
-router.use(protect);
+router.use(protect, branchScope);
 
 router.post("/check-in", authorize("member"), memberCheckIn);
 router.post("/check-out", authorize("member"), memberCheckOut);

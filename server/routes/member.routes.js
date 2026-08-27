@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const { protect, authorize } = require("../middlewares/auth.middleware");
+const { branchScope } = require("../middlewares/branchScope.middleware");
 const upload = require("../utils/upload");
 const {
   createMember,
@@ -19,7 +20,7 @@ const {
   updateMyProfile
 } = require("../controllers/member.controller");
 
-router.use(protect);
+router.use(protect, branchScope);
 router.get("/", authorize("view_member"), listMembers);
 router.get("/search", authorize("view_member"), searchMembers);
 router.post("/", authorize("create_member"), upload.single("photo"), createMember);

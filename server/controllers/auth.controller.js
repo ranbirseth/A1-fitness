@@ -16,6 +16,7 @@ const toTokens = (user) => {
 const sanitizeUser = (user, member = null) => ({
   _id: user._id,
   gymId: user.gymId,
+  branchCode: user.branchCode || "MAIN",
   name: user.name,
   email: user.email,
   phone: user.phone,
@@ -211,6 +212,120 @@ const logout = asyncHandler(async (req, res) => {
   sendResponse(res, { message: "Logout successful", data: {} });
 });
 
+// ============================================================
+// DEMO MODE (TEMPORARY - environment controlled)
+// ============================================================
+// When DEMO_MODE=true, /api/auth/demo-login signs visitors in as the
+// seeded MAIN gym admin WITHOUT credentials by issuing REAL access and
+// refresh tokens through the exact same pipeline as `login`.
+// Everything else stays untouched: JWT verification, refresh-token
+// rotation, RBAC (authorize), branchScope and gym isolation all remain
+// fully enforced for demo sessions.
+//
+// DEMO_MODE=false (or unset) -> both routes behave as if they do not
+// exist and normal login/authentication is required again.
+// The flag is read at REQUEST time, so it can never get hardcoded into
+// the running app - flipping the env var + restart restores security.
+
+const isDemoModeEnabled = () =>
+  String(process.env.DEMO_MODE || "").trim().toLowerCase() === "true";
+
+const DEMO_GYM_ID = process.env.DEMO_GYM_ID || "MAIN";
+
+const DEMO_ACCOUNTS = {
+  superadmin: { email: "superadmin@dev.local", password: "superadmin2026" },
+  admin:      { email: "admin@gmail.com",       password: "admin2026" },
+  trainer:    { email: "trainer@dev.local",      password: "trainer2026" },
+  member:     { email: "member@dev.local",       password: "member2026" },
+};
+
+const demoStatus = asyncHandler(async (_req, res) => {
+  sendResponse(res, {
+    message: "Demo mode status",
+    data: { demoMode: isDemoModeEnabled() },
+  });
+});
+
+const demoLogin = asyncHandler(async (req, res) => {
+  // Hard runtime gate: disabled unless DEMO_MODE is exactly "true".
+  if (!isDemoModeEnabled()) {
+    throw new AppError("Not Found", 404);
+  }
+
+  const role = req.body?.role || "admin";
+  const account = DEMO_ACCOUNTS[role];
+  if (!account) {
+    throw new AppError("Invalid demo role", 400);
+  }
+
+  // Find the seeded dev account for the requested role.
+  let user = await User.findOne({
+    email: account.email,
+    gymId: DEMO_GYM_ID,
+    role,
+  });
+
+  if (!user) {
+    user = await User.findOne({ gymId: DEMO_GYM_ID, role, status: "active" });
+  }
+
+  if (!user) {
+    console.warn(`[DEMO MODE] No ${role} found. Recreating...`);
+    user = await User.create({
+      gymId: DEMO_GYM_ID,
+      name: `Dev ${role.charAt(0).toUpperCase() + role.slice(1)}`,
+      email: account.email,
+      password: account.password,
+      role,
+      status: "active",
+      branchCode: "MAIN",
+    });
+  }
+
+  // Self-heal deactivated demo accounts.
+  if (user.status === "inactive") {
+    user.status = "active";
+  }
+
+  // Members require a Member document for sanitizeUser.
+  let member = null;
+  if (role === "member") {
+    member = await Member.findOne({ user: user._id });
+    if (!member) {
+      member = await Member.create({
+        gymId: DEMO_GYM_ID,
+        user: user._id,
+        branchCode: "MAIN",
+        isActivePlan: true,
+        status: "active",
+        paymentStatus: "paid",
+        secretCode: Math.floor(100 + Math.random() * 900).toString(),
+      });
+    } else if (member.status !== "active") {
+      member.status = "active";
+      member.paymentStatus = "paid";
+      await member.save();
+    }
+  }
+
+  const tokens = toTokens(user);
+  user.refreshTokens.push(tokens.refreshToken);
+  user.refreshTokens = user.refreshTokens.slice(-10);
+  await user.save();
+
+  res.cookie("refreshToken", tokens.refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  sendResponse(res, {
+    message: "Demo login successful",
+    data: { user: sanitizeUser(user, member), accessToken: tokens.accessToken },
+  });
+});
+
 const crypto = require("crypto");
 
 const forgotPassword = asyncHandler(async (req, res) => {
@@ -255,4 +370,4 @@ const resetPassword = asyncHandler(async (req, res) => {
   sendResponse(res, { message: "Password reset successful" });
 });
 
-module.exports = { signup, login, refresh, logout, forgotPassword, resetPassword, updateProfile };
+module.exports = { signup, login, refresh, logout, forgotPassword, resetPassword, updateProfile, demoStatus, demoLogin };

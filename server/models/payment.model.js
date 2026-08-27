@@ -12,7 +12,8 @@ const paymentSchema = new mongoose.Schema(
     note: String,
     invoiceNumber: { type: String, required: true, index: true },
     invoice: { type: Object, default: {} },
-    dueDate: Date
+    dueDate: Date,
+    branchCode: { type: String, default: "MAIN", index: true }
   },
   { timestamps: true }
 );

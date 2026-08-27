@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Bell, Moon, Sun, Menu, X, ChevronDown, LogOut, User as UserIcon } from 'lucide-react';
+import { Search, Bell, Moon, Sun, Menu, ChevronDown, LogOut, User as UserIcon, Building2 } from 'lucide-react';
 import { useAuthStore } from '../../store/auth.store';
+import { useBranchStore } from '../../store/branch.store';
 import { Link } from 'react-router-dom';
 
 interface HeaderProps {
@@ -11,8 +12,15 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ theme, toggleTheme, toggleSidebar }) => {
   const { user, logout } = useAuthStore();
+  const { branches, selectedBranch, setSelectedBranch, fetchBranches } = useBranchStore();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (user && (user.role === 'superadmin' || user.role === 'admin' || user.role === 'trainer')) {
+      fetchBranches();
+    }
+  }, [user]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -23,6 +31,10 @@ const Header: React.FC<HeaderProps> = ({ theme, toggleTheme, toggleSidebar }) =>
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const isSuperAdmin = user?.role === 'superadmin';
+  const assignedBranch = user?.branchCode || 'MAIN';
+  const branchName = branches.find(b => b.branchCode === (isSuperAdmin ? selectedBranch : assignedBranch))?.name || (isSuperAdmin && selectedBranch === 'ALL' ? 'All Branches' : assignedBranch);
 
   return (
     <header className="top-nav">
@@ -41,8 +53,39 @@ const Header: React.FC<HeaderProps> = ({ theme, toggleTheme, toggleSidebar }) =>
         </div>
       </div>
 
-      {/* Right: Account Icon & Dropdown */}
-      <div className="nav-right" ref={dropdownRef}>
+      {/* Right: Branch Selector & Account Icon */}
+      <div className="nav-right" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }} ref={dropdownRef}>
+        {user && user.role !== 'member' && (
+          <div className="header-branch-pill" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-glass-card, rgba(255,255,255,0.06))', padding: '0.35rem 0.75rem', borderRadius: '20px', border: '1px solid var(--border-glass, rgba(255,255,255,0.1))', fontSize: '0.85rem' }}>
+            <Building2 size={15} style={{ color: 'var(--clr-primary, #8b5cf6)' }} />
+            {isSuperAdmin ? (
+              <select
+                value={selectedBranch}
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'inherit',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+                title="Global Branch Context"
+              >
+                <option value="ALL" style={{ background: '#1e1b4b', color: '#fff' }}>All Branches</option>
+                {branches.map(b => (
+                  <option key={b._id} value={b.branchCode} style={{ background: '#1e1b4b', color: '#fff' }}>
+                    {b.name} ({b.branchCode})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span style={{ fontWeight: 600 }}>{branchName}</span>
+            )}
+          </div>
+        )}
+
         <div className="account-wrapper">
           <button 
             className="account-trigger" 
@@ -63,7 +106,7 @@ const Header: React.FC<HeaderProps> = ({ theme, toggleTheme, toggleSidebar }) =>
             <div className="account-dropdown glass-panel">
               <div className="dropdown-header">
                 <p className="user-name">{user?.name || 'User'}</p>
-                <p className="user-role text-muted">{user?.role || 'Guest'}</p>
+                <p className="user-role text-muted">{user?.role || 'Guest'} {user?.branchCode ? `• ${user.branchCode}` : ''}</p>
               </div>
               
               <div className="dropdown-divider"></div>
@@ -73,11 +116,7 @@ const Header: React.FC<HeaderProps> = ({ theme, toggleTheme, toggleSidebar }) =>
                 <div className="notification-list">
                   <div className="notification-item">
                     <div className="notif-dot"></div>
-                    <p>New member registration: John Doe</p>
-                  </div>
-                  <div className="notification-item">
-                    <div className="notif-dot"></div>
-                    <p>Payment received: Invoice #INV-102</p>
+                    <p>System active across authorized branches</p>
                   </div>
                 </div>
               </div>

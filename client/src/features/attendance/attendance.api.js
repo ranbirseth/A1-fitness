@@ -32,12 +32,14 @@ export const exportMyAttendance = (format = "csv", startDate, endDate) => {
 };
 export const markAttendance = (data) => http.post("/attendance/mark", data);
 export const getAttendance = (params = {}) => {
-    const { search = "", date = "", page = 1, limit = 50 } = params;
+    const { search = "", date = "", page = 1, limit = 50, branchCode } = params;
     let url = `/attendance?page=${page}&limit=${limit}`;
     if (search)
-        url += `&search=${search}`;
+        url += `&search=${encodeURIComponent(search)}`;
     if (date)
         url += `&date=${date}`;
+    if (branchCode)
+        url += `&branchCode=${branchCode}`;
     return http.get(url);
 };
 export const manualCheckIn = (data) => http.post("/attendance/mark", data);

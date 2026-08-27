@@ -1,10 +1,11 @@
 import http from "../../api/http";
 
-export const getMembers = (params: { page?: number; limit?: number; search?: string; status?: string; trainerId?: string } = {}) => {
-  const { page = 1, limit = 10, search = "", status, trainerId } = params;
+export const getMembers = (params: { page?: number; limit?: number; search?: string; status?: string; trainerId?: string; branchCode?: string } = {}) => {
+  const { page = 1, limit = 10, search = "", status, trainerId, branchCode } = params;
   let url = `/members?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`;
   if (status) url += `&status=${status}`;
   if (trainerId) url += `&trainerId=${trainerId}`;
+  if (branchCode) url += `&branchCode=${branchCode}`;
   return http.get(url);
 };
 export const createMember = (payload: Record<string, unknown>) => http.post("/members", payload);

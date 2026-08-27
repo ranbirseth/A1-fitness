@@ -1,12 +1,17 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useState } from 'react';
-import { Check, X, Plus, Trash2, Edit2, Save, IndianRupee, Clock, Zap, Search, UserPlus } from 'lucide-react';
-import { getPlans, createPlan, deletePlan, updatePlan } from '../features/plans/plans.api';
+import { Check, X, Plus, Trash2, Edit2, Save, IndianRupee, Clock, Zap, Search, UserPlus, Building2 } from 'lucide-react';
+import { getPlans, createPlan, deletePlan, updatePlan, applyPlanToBranch, removePlanFromBranch } from '../features/plans/plans.api';
 import { getMembers, assignPlan } from '../features/members/members.api';
 import { recordPayment } from '../features/payments/payments.api';
 import { useDebounce } from '../hooks/useDebounce';
+import { useAuthStore } from '../store/auth.store';
+import { useBranchStore } from '../store/branch.store';
 import Modal from '../components/Modal';
 const PlansPage = () => {
+    const { user } = useAuthStore();
+    const { branches, fetchBranches } = useBranchStore();
+    const isSuperAdmin = user?.role === 'superadmin';
     const [plans, setPlans] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -14,7 +19,6 @@ const PlansPage = () => {
     const [editingId, setEditingId] = useState(null);
     const [formData, setFormData] = useState({ name: '', price: 0, duration: 30, features: [] });
     const [featureInput, setFeatureInput] = useState('');
-    // States for Assigning Plan to Member
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [selectedPlanForAssign, setSelectedPlanForAssign] = useState(null);
     const [members, setMembers] = useState([]);
@@ -22,6 +26,10 @@ const PlansPage = () => {
     const debouncedMemberSearch = useDebounce(memberSearchQuery, 500);
     const [isAssigning, setIsAssigning] = useState(false);
     const [recordAssignPayment, setRecordAssignPayment] = useState(true);
+    const [isApplyBranchModalOpen, setIsApplyBranchModalOpen] = useState(false);
+    const [selectedPlanForBranch, setSelectedPlanForBranch] = useState(null);
+    const [selectedBranchCode, setSelectedBranchCode] = useState('');
+    const [isApplying, setIsApplying] = useState(false);
     const fetchPlans = async () => {
         setLoading(true);
         try {
@@ -39,6 +47,8 @@ const PlansPage = () => {
     };
     useEffect(() => {
         fetchPlans();
+        if (isSuperAdmin)
+            fetchBranches();
     }, []);
     useEffect(() => {
         if (isAssignModalOpen) {
@@ -65,7 +75,6 @@ const PlansPage = () => {
         setIsAssigning(true);
         try {
             await assignPlan(memberId, { planId: selectedPlanForAssign._id });
-            // Also record payment if checkbox is checked
             if (recordAssignPayment) {
                 await recordPayment({
                     member: memberId,
@@ -132,6 +141,38 @@ const PlansPage = () => {
             alert(error.response?.data?.message || 'Failed to delete plan');
         }
     };
+    const handleOpenApplyBranch = (plan) => {
+        setSelectedPlanForBranch(plan);
+        setSelectedBranchCode('');
+        setIsApplyBranchModalOpen(true);
+    };
+    const handleApplyToBranch = async () => {
+        if (!selectedPlanForBranch || !selectedBranchCode)
+            return;
+        setIsApplying(true);
+        try {
+            await applyPlanToBranch(selectedPlanForBranch._id, selectedBranchCode);
+            setIsApplyBranchModalOpen(false);
+            fetchPlans();
+        }
+        catch (error) {
+            alert(error.response?.data?.message || 'Failed to apply plan to branch');
+        }
+        finally {
+            setIsApplying(false);
+        }
+    };
+    const handleRemoveFromBranch = async (planId, branchCode) => {
+        if (!window.confirm(`Remove this plan from branch ${branchCode}?`))
+            return;
+        try {
+            await removePlanFromBranch(planId, branchCode);
+            fetchPlans();
+        }
+        catch (error) {
+            alert(error.response?.data?.message || 'Failed to remove plan from branch');
+        }
+    };
     const addFeature = () => {
         if (!featureInput.trim())
             return;
@@ -148,7 +189,7 @@ const PlansPage = () => {
                                 padding: '1rem',
                                 cursor: 'pointer',
                                 transition: 'all 0.2s ease'
-                            }, onClick: () => handleAssignToMember(member._id), children: [_jsxs("div", { children: [_jsx("p", { style: { fontWeight: '600', marginBottom: '0.25rem' }, children: member.user?.name || member.name }), _jsx("p", { className: "text-muted", style: { fontSize: '0.8rem' }, children: member.user?.email || member.email })] }), _jsx("button", { className: "btn-icon", style: { background: 'var(--clr-primary)', color: 'white' }, disabled: isAssigning, children: _jsx(UserPlus, { size: 16 }) })] }, member._id)))) : (_jsx("p", { className: "text-center text-muted", style: { padding: '2rem' }, children: memberSearchQuery ? 'No members found matching your search.' : 'Search for a member to assign this plan.' })) })] }), loading ? (_jsxs("div", { style: { padding: '4rem', textAlign: 'center' }, children: [_jsx("div", { className: "spinner" }), _jsx("p", { className: "text-muted", style: { marginTop: '1rem' }, children: "Loading plans..." })] })) : (_jsx("div", { className: "grid-cards", children: plans.map((plan) => (_jsxs("div", { className: "glass-card", style: {
+                            }, onClick: () => handleAssignToMember(member._id), children: [_jsxs("div", { children: [_jsx("p", { style: { fontWeight: '600', marginBottom: '0.25rem' }, children: member.user?.name || member.name }), _jsx("p", { className: "text-muted", style: { fontSize: '0.8rem' }, children: member.user?.email || member.email })] }), _jsx("button", { className: "btn-icon", style: { background: 'var(--clr-primary)', color: 'white' }, disabled: isAssigning, children: _jsx(UserPlus, { size: 16 }) })] }, member._id)))) : (_jsx("p", { className: "text-center text-muted", style: { padding: '2rem' }, children: memberSearchQuery ? 'No members found matching your search.' : 'Search for a member to assign this plan.' })) })] }), _jsxs(Modal, { isOpen: isApplyBranchModalOpen, onClose: () => setIsApplyBranchModalOpen(false), title: `Apply "${selectedPlanForBranch?.name}" to Branch`, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Select Branch" }), _jsxs("select", { className: "form-input", value: selectedBranchCode, onChange: e => setSelectedBranchCode(e.target.value), children: [_jsx("option", { value: "", children: "Select a branch" }), branches.filter(b => b.status === 'active').map(b => (_jsxs("option", { value: b.branchCode, children: [b.name, " (", b.branchCode, ")"] }, b._id)))] })] }), _jsxs("div", { style: { marginTop: '1.5rem', display: 'flex', gap: '1rem' }, children: [_jsx("button", { className: "btn btn-secondary", style: { flex: 1 }, onClick: () => setIsApplyBranchModalOpen(false), children: "Cancel" }), _jsx("button", { className: "btn btn-primary", style: { flex: 1 }, onClick: handleApplyToBranch, disabled: !selectedBranchCode || isApplying, children: isApplying ? 'Applying...' : 'Apply' })] })] }), loading ? (_jsxs("div", { style: { padding: '4rem', textAlign: 'center' }, children: [_jsx("div", { className: "spinner" }), _jsx("p", { className: "text-muted", style: { marginTop: '1rem' }, children: "Loading plans..." })] })) : (_jsx("div", { className: "grid-cards", children: plans.map((plan) => (_jsxs("div", { className: "glass-card", style: {
                         padding: '2.5rem',
                         position: 'relative',
                         textAlign: 'center'
@@ -159,6 +200,17 @@ const PlansPage = () => {
                                 background: 'rgba(var(--clr-primary-rgb), 0.1)',
                                 color: 'var(--clr-primary)',
                                 marginBottom: '1.5rem'
-                            }, children: _jsx(Zap, { size: 24, fill: "currentColor" }) }), _jsx("h3", { style: { fontSize: '1.5rem', marginBottom: '0.5rem' }, children: plan.name }), _jsxs("p", { className: "text-muted", style: { fontSize: '0.9rem', marginBottom: '1.5rem' }, children: ["Valid for ", plan.duration, " days"] }), _jsx("div", { style: { marginBottom: '2rem' }, children: _jsxs("span", { style: { fontSize: '2.5rem', fontWeight: '800', color: 'var(--clr-primary)' }, children: ["\u20B9", plan.price.toLocaleString()] }) }), _jsxs("div", { style: { textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2.5rem', minHeight: '150px' }, children: [(plan.features || []).map((feature, idx) => (_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '0.75rem' }, children: [_jsx("div", { style: { width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(34, 197, 94, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }, children: _jsx(Check, { size: 12, className: "text-success" }) }), _jsx("span", { style: { fontSize: '0.9rem' }, children: feature })] }, idx))), (!plan.features || plan.features.length === 0) && (_jsx("p", { className: "text-muted", style: { fontSize: '0.85rem', fontStyle: 'italic' }, children: "No specific features listed" }))] }), _jsx("button", { className: "btn btn-secondary w-full", style: { justifyContent: 'center' }, onClick: () => handleOpenAssignModal(plan), children: "Assign to Member" })] }, plan._id))) })), !loading && plans.length === 0 && (_jsxs("div", { className: "glass-panel text-center", style: { padding: '5rem' }, children: [_jsx(Zap, { size: 48, className: "text-muted", style: { marginBottom: '1.5rem', opacity: 0.3 } }), _jsx("h3", { children: "No plans created yet" }), _jsx("p", { className: "text-muted", style: { marginBottom: '2rem' }, children: "Get started by creating your first membership plan." }), _jsxs("button", { className: "btn btn-primary", onClick: handleOpenAdd, children: [_jsx(Plus, { size: 18 }), "Add First Plan"] })] }))] }));
+                            }, children: _jsx(Zap, { size: 24, fill: "currentColor" }) }), _jsx("h3", { style: { fontSize: '1.5rem', marginBottom: '0.5rem' }, children: plan.name }), _jsxs("p", { className: "text-muted", style: { fontSize: '0.9rem', marginBottom: '1.5rem' }, children: ["Valid for ", plan.duration, " days"] }), _jsx("div", { style: { marginBottom: '2rem' }, children: _jsxs("span", { style: { fontSize: '2.5rem', fontWeight: '800', color: 'var(--clr-primary)' }, children: ["\u20B9", plan.price.toLocaleString()] }) }), _jsxs("div", { style: { textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2.5rem', minHeight: '150px' }, children: [(plan.features || []).map((feature, idx) => (_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '0.75rem' }, children: [_jsx("div", { style: { width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(34, 197, 94, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }, children: _jsx(Check, { size: 12, className: "text-success" }) }), _jsx("span", { style: { fontSize: '0.9rem' }, children: feature })] }, idx))), (!plan.features || plan.features.length === 0) && (_jsx("p", { className: "text-muted", style: { fontSize: '0.85rem', fontStyle: 'italic' }, children: "No specific features listed" }))] }), isSuperAdmin && (_jsxs("div", { style: { marginBottom: '1.5rem', textAlign: 'left' }, children: [_jsx("p", { className: "text-muted", style: { fontSize: '0.75rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }, children: "Applied Branches" }), (plan.appliedBranches || []).length > 0 ? (_jsx("div", { style: { display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }, children: plan.appliedBranches.map((bc) => (_jsxs("span", { style: {
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '0.25rem',
+                                            fontSize: '0.75rem',
+                                            padding: '0.2rem 0.6rem',
+                                            borderRadius: '12px',
+                                            background: 'rgba(139, 92, 246, 0.12)',
+                                            color: 'var(--clr-primary)'
+                                        }, children: [_jsx(Building2, { size: 10 }), " ", bc, _jsx("span", { onClick: (e) => { e.stopPropagation(); handleRemoveFromBranch(plan._id, bc); }, title: `Remove from ${bc}`, style: { cursor: 'pointer', display: 'inline-flex' }, children: _jsx(X, { size: 12, style: { opacity: 0.7, marginLeft: '0.15rem' } }) })] }, bc))) })) : (_jsx("p", { className: "text-muted", style: { fontSize: '0.8rem', fontStyle: 'italic' }, children: "None" }))] })), _jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.5rem' }, children: [isSuperAdmin && (_jsxs("button", { className: "btn btn-secondary w-full", style: { justifyContent: 'center' }, onClick: () => handleOpenApplyBranch(plan), children: [_jsx(Building2, { size: 16 }), " Apply to Branch"] })), _jsx("button", { className: "btn btn-secondary w-full", style: { justifyContent: 'center' }, onClick: () => handleOpenAssignModal(plan), children: "Assign to Member" })] })] }, plan._id))) })), !loading && plans.length === 0 && (_jsxs("div", { className: "glass-panel text-center", style: { padding: '5rem' }, children: [_jsx(Zap, { size: 48, className: "text-muted", style: { marginBottom: '1.5rem', opacity: 0.3 } }), _jsx("h3", { children: "No plans created yet" }), _jsx("p", { className: "text-muted", style: { marginBottom: '2rem' }, children: isSuperAdmin
+                            ? 'Get started by creating your first membership plan and applying it to branches.'
+                            : 'No plans are currently available for your branch. Ask the superadmin to apply plans.' }), isSuperAdmin && (_jsxs("button", { className: "btn btn-primary", onClick: handleOpenAdd, children: [_jsx(Plus, { size: 18 }), "Add First Plan"] }))] }))] }));
 };
 export default PlansPage;

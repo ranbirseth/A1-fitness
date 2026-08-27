@@ -1,4 +1,5 @@
 const User = require("../models/user.model");
+const Member = require("../models/member.model");
 
 const DEFAULT_ADMIN = {
   gymId: "MAIN",
@@ -7,6 +8,36 @@ const DEFAULT_ADMIN = {
   password: "admin2026",
   role: "admin",
   phone: "78656647534",
+  status: "active"
+};
+
+const DEV_SUPERADMIN = {
+  gymId: "MAIN",
+  name: "Dev Superadmin",
+  email: "superadmin@dev.local",
+  password: "superadmin2026",
+  role: "superadmin",
+  branchCode: "MAIN",
+  status: "active"
+};
+
+const DEV_TRAINER = {
+  gymId: "MAIN",
+  name: "Dev Trainer",
+  email: "trainer@dev.local",
+  password: "trainer2026",
+  role: "trainer",
+  branchCode: "MAIN",
+  status: "active"
+};
+
+const DEV_MEMBER = {
+  gymId: "MAIN",
+  name: "Dev Member",
+  email: "member@dev.local",
+  password: "member2026",
+  role: "member",
+  branchCode: "MAIN",
   status: "active"
 };
 
@@ -33,4 +64,51 @@ const seedData = async () => {
   console.log("===================================");
 };
 
-module.exports = { seedData };
+/**
+ * DEVELOPMENT-ONLY: Creates accounts for testing all four roles.
+ * All functions are gated by NODE_ENV — they NEVER run in production.
+ */
+const ensureDevSuperadmin = async () => {
+  if (process.env.NODE_ENV === "production" || process.env.RENDER) return;
+  if (await User.exists({ role: "superadmin" })) return;
+  try {
+    await User.create(DEV_SUPERADMIN);
+    console.log("[DEV] Superadmin created:", DEV_SUPERADMIN.email);
+  } catch (err) {
+    console.error("[DEV] Failed to create superadmin:", err.message);
+  }
+};
+
+const ensureDevTrainer = async () => {
+  if (process.env.NODE_ENV === "production" || process.env.RENDER) return;
+  if (await User.exists({ role: "trainer" })) return;
+  try {
+    await User.create(DEV_TRAINER);
+    console.log("[DEV] Trainer created:", DEV_TRAINER.email);
+  } catch (err) {
+    console.error("[DEV] Failed to create trainer:", err.message);
+  }
+};
+
+const ensureDevMember = async () => {
+  if (process.env.NODE_ENV === "production" || process.env.RENDER) return;
+  if (await User.exists({ email: DEV_MEMBER.email, gymId: DEV_MEMBER.gymId })) return;
+  try {
+    const user = await User.create(DEV_MEMBER);
+    const secretCode = Math.floor(100 + Math.random() * 900).toString();
+    await Member.create({
+      gymId: DEV_MEMBER.gymId,
+      user: user._id,
+      branchCode: "MAIN",
+      isActivePlan: true,
+      status: "active",
+      paymentStatus: "paid",
+      secretCode
+    });
+    console.log("[DEV] Member created:", DEV_MEMBER.email);
+  } catch (err) {
+    console.error("[DEV] Failed to create member:", err.message);
+  }
+};
+
+module.exports = { seedData, ensureDevSuperadmin, ensureDevTrainer, ensureDevMember };

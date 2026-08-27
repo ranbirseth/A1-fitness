@@ -19,5 +19,15 @@ services:
         value: production
       - key: PORT
         value: 5000
+      # ============================================================
+      # DEMO MODE (TEMPORARY)
+      # "true"  -> POST /api/auth/demo-login is enabled and the app signs
+      #            visitors straight into the MAIN gym Admin Dashboard.
+      # BEFORE REAL PRODUCTION LAUNCH: change to "false" (or remove this
+      # key) so normal login/authentication is restored. A value set in
+      # the Render dashboard overrides this file.
+      # ============================================================
+      - key: DEMO_MODE
+        value: "true"
       # NOTE: These environment variables must be set in Render dashboard
       # MONGO_URI, REDIS_URL, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET

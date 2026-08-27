@@ -1,12 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Check, X, Plus, Trash2, Edit2, Save, IndianRupee, Clock, Zap, Search, UserPlus } from 'lucide-react';
-import { getPlans, createPlan, deletePlan, updatePlan } from '../features/plans/plans.api';
+import { Check, X, Plus, Trash2, Edit2, Save, IndianRupee, Clock, Zap, Search, UserPlus, Building2, ChevronDown, ChevronUp } from 'lucide-react';
+import { getPlans, createPlan, deletePlan, updatePlan, applyPlanToBranch, removePlanFromBranch } from '../features/plans/plans.api';
 import { getMembers, assignPlan } from '../features/members/members.api';
 import { recordPayment } from '../features/payments/payments.api';
 import { useDebounce } from '../hooks/useDebounce';
+import { useAuthStore } from '../store/auth.store';
+import { useBranchStore } from '../store/branch.store';
 import Modal from '../components/Modal';
 
 const PlansPage: React.FC = () => {
+  const { user } = useAuthStore();
+  const { branches, fetchBranches } = useBranchStore();
+  const isSuperAdmin = user?.role === 'superadmin';
+
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -15,7 +21,6 @@ const PlansPage: React.FC = () => {
   const [formData, setFormData] = useState({ name: '', price: 0, duration: 30, features: [] as string[] });
   const [featureInput, setFeatureInput] = useState('');
 
-  // States for Assigning Plan to Member
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedPlanForAssign, setSelectedPlanForAssign] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
@@ -23,6 +28,11 @@ const PlansPage: React.FC = () => {
   const debouncedMemberSearch = useDebounce(memberSearchQuery, 500);
   const [isAssigning, setIsAssigning] = useState(false);
   const [recordAssignPayment, setRecordAssignPayment] = useState(true);
+
+  const [isApplyBranchModalOpen, setIsApplyBranchModalOpen] = useState(false);
+  const [selectedPlanForBranch, setSelectedPlanForBranch] = useState<any>(null);
+  const [selectedBranchCode, setSelectedBranchCode] = useState('');
+  const [isApplying, setIsApplying] = useState(false);
 
   const fetchPlans = async () => {
     setLoading(true);
@@ -40,6 +50,7 @@ const PlansPage: React.FC = () => {
 
   useEffect(() => {
     fetchPlans();
+    if (isSuperAdmin) fetchBranches();
   }, []);
 
   useEffect(() => {
@@ -68,7 +79,6 @@ const PlansPage: React.FC = () => {
     try {
       await assignPlan(memberId, { planId: selectedPlanForAssign._id });
       
-      // Also record payment if checkbox is checked
       if (recordAssignPayment) {
         await recordPayment({
           member: memberId,
@@ -131,6 +141,36 @@ const PlansPage: React.FC = () => {
       fetchPlans();
     } catch (error: any) {
       alert(error.response?.data?.message || 'Failed to delete plan');
+    }
+  };
+
+  const handleOpenApplyBranch = (plan: any) => {
+    setSelectedPlanForBranch(plan);
+    setSelectedBranchCode('');
+    setIsApplyBranchModalOpen(true);
+  };
+
+  const handleApplyToBranch = async () => {
+    if (!selectedPlanForBranch || !selectedBranchCode) return;
+    setIsApplying(true);
+    try {
+      await applyPlanToBranch(selectedPlanForBranch._id, selectedBranchCode);
+      setIsApplyBranchModalOpen(false);
+      fetchPlans();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to apply plan to branch');
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  const handleRemoveFromBranch = async (planId: string, branchCode: string) => {
+    if (!window.confirm(`Remove this plan from branch ${branchCode}?`)) return;
+    try {
+      await removePlanFromBranch(planId, branchCode);
+      fetchPlans();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to remove plan from branch');
     }
   };
 
@@ -238,7 +278,6 @@ const PlansPage: React.FC = () => {
         </form>
       </Modal>
 
-      {/* Modal for Selecting Member to Assign Plan */}
       <Modal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} title={`Assign ${selectedPlanForAssign?.name} to Member`}>
         <div className="form-group">
           <label className="form-label">Search Member</label>
@@ -300,6 +339,38 @@ const PlansPage: React.FC = () => {
         </div>
       </Modal>
 
+      <Modal isOpen={isApplyBranchModalOpen} onClose={() => setIsApplyBranchModalOpen(false)} title={`Apply "${selectedPlanForBranch?.name}" to Branch`}>
+        <div className="form-group">
+          <label className="form-label">Select Branch</label>
+          <select 
+            className="form-input" 
+            value={selectedBranchCode} 
+            onChange={e => setSelectedBranchCode(e.target.value)}
+          >
+            <option value="">Select a branch</option>
+            {branches.filter(b => b.status === 'active').map(b => (
+              <option key={b._id} value={b.branchCode}>
+                {b.name} ({b.branchCode})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
+          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setIsApplyBranchModalOpen(false)}>
+            Cancel
+          </button>
+          <button 
+            className="btn btn-primary" 
+            style={{ flex: 1 }} 
+            onClick={handleApplyToBranch}
+            disabled={!selectedBranchCode || isApplying}
+          >
+            {isApplying ? 'Applying...' : 'Apply'}
+          </button>
+        </div>
+      </Modal>
+
       {loading ? (
         <div style={{ padding: '4rem', textAlign: 'center' }}>
           <div className="spinner"></div>
@@ -358,13 +429,59 @@ const PlansPage: React.FC = () => {
                 )}
               </div>
 
-              <button 
-                className="btn btn-secondary w-full" 
-                style={{ justifyContent: 'center' }}
-                onClick={() => handleOpenAssignModal(plan)}
-              >
-                Assign to Member
-              </button>
+              {isSuperAdmin && (
+                <div style={{ marginBottom: '1.5rem', textAlign: 'left' }}>
+                  <p className="text-muted" style={{ fontSize: '0.75rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                    Applied Branches
+                  </p>
+                  {(plan.appliedBranches || []).length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      {plan.appliedBranches.map((bc: string) => (
+                        <span key={bc} style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          fontSize: '0.75rem',
+                          padding: '0.2rem 0.6rem',
+                          borderRadius: '12px',
+                          background: 'rgba(139, 92, 246, 0.12)',
+                          color: 'var(--clr-primary)'
+                        }}>
+                          <Building2 size={10} /> {bc}
+                          <span
+                            onClick={(e) => { e.stopPropagation(); handleRemoveFromBranch(plan._id, bc); }}
+                            title={`Remove from ${bc}`}
+                            style={{ cursor: 'pointer', display: 'inline-flex' }}
+                          >
+                            <X size={12} style={{ opacity: 0.7, marginLeft: '0.15rem' }} />
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted" style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>None</p>
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {isSuperAdmin && (
+                  <button 
+                    className="btn btn-secondary w-full" 
+                    style={{ justifyContent: 'center' }}
+                    onClick={() => handleOpenApplyBranch(plan)}
+                  >
+                    <Building2 size={16} /> Apply to Branch
+                  </button>
+                )}
+                <button 
+                  className="btn btn-secondary w-full" 
+                  style={{ justifyContent: 'center' }}
+                  onClick={() => handleOpenAssignModal(plan)}
+                >
+                  Assign to Member
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -374,11 +491,17 @@ const PlansPage: React.FC = () => {
         <div className="glass-panel text-center" style={{ padding: '5rem' }}>
           <Zap size={48} className="text-muted" style={{ marginBottom: '1.5rem', opacity: 0.3 }} />
           <h3>No plans created yet</h3>
-          <p className="text-muted" style={{ marginBottom: '2rem' }}>Get started by creating your first membership plan.</p>
-          <button className="btn btn-primary" onClick={handleOpenAdd}>
-            <Plus size={18} />
-            Add First Plan
-          </button>
+          <p className="text-muted" style={{ marginBottom: '2rem' }}>
+            {isSuperAdmin 
+              ? 'Get started by creating your first membership plan and applying it to branches.'
+              : 'No plans are currently available for your branch. Ask the superadmin to apply plans.'}
+          </p>
+          {isSuperAdmin && (
+            <button className="btn btn-primary" onClick={handleOpenAdd}>
+              <Plus size={18} />
+              Add First Plan
+            </button>
+          )}
         </div>
       )}
     </div>

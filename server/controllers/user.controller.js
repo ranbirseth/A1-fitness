@@ -6,6 +6,7 @@ const { AppError } = require("../utils/appError");
 const sanitizeUser = (user) => ({
   _id: user._id,
   gymId: user.gymId,
+  branchCode: user.branchCode || "MAIN",
   name: user.name,
   email: user.email,
   phone: user.phone,

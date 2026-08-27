@@ -67,6 +67,13 @@ const markAttendance = asyncHandler(async (req, res) => {
   if (isAdminOrTrainer && memberId) {
     member = await Member.findOne({ _id: memberId, gymId: req.gymId }).populate("user");
     if (!member) throw new AppError("Member not found", 404);
+    if (req.user.role !== "superadmin") {
+      const userBranch = (req.user.branchCode || "MAIN").trim().toUpperCase();
+      const memBranch = (member.branchCode || "MAIN").trim().toUpperCase();
+      if (userBranch !== memBranch) {
+        throw new AppError("Member not found in your branch", 404);
+      }
+    }
   } else {
     if (!secretCode) throw new AppError("Secret code is required for self check-in", 400);
     member = await Member.findOne({ secretCode }).populate("user");
@@ -83,6 +90,7 @@ const markAttendance = asyncHandler(async (req, res) => {
 
   const today = getTodayDate();
   const gymId = member.gymId;
+  const branchCode = member.branchCode || "MAIN";
 
   let attendance = await Attendance.findOne({ member: member._id, date: today, deletedAt: null });
 
@@ -97,6 +105,7 @@ const markAttendance = asyncHandler(async (req, res) => {
 
     attendance = await Attendance.create({
       gymId,
+      branchCode,
       member: member._id,
       date: today,
       checkIn: serverTime,
@@ -222,6 +231,7 @@ const memberCheckIn = asyncHandler(async (req, res) => {
 
   const attendance = await Attendance.create({
     gymId: req.gymId,
+    branchCode: member.branchCode || "MAIN",
     member: member._id,
     date: today,
     checkIn: serverTime,
@@ -683,15 +693,27 @@ const history = asyncHandler(async (req, res) => {
   const query = { gymId: req.gymId, deletedAt: null };
   if (date) query.date = date;
 
-  let memberIds = [];
+  const requestedBranch = req.user && req.user.role !== "superadmin"
+    ? (req.user.branchCode || "MAIN").trim().toUpperCase()
+    : (req.query.branchCode && req.query.branchCode !== "ALL" && req.query.branchCode !== "all" ? req.query.branchCode.trim().toUpperCase() : undefined);
+
+  if (requestedBranch) {
+    const branchMemberIds = await Member.find({ gymId: req.gymId, branchCode: requestedBranch }).distinct("_id");
+    query.$or = [{ branchCode: requestedBranch }, { member: { $in: branchMemberIds } }];
+  }
+
   if (search) {
     const members = await Member.aggregate([
       { $lookup: { from: "users", localField: "user", foreignField: "_id", as: "userDoc" } },
       { $unwind: "$userDoc" },
       { $match: { "userDoc.name": new RegExp(search, "i") } }
     ]);
-    memberIds = members.map(m => m._id);
-    query.member = { $in: memberIds };
+    const searchMemberIds = members.map(m => m._id);
+    if (query.$or) {
+      query.member = { $in: searchMemberIds };
+    } else {
+      query.member = { $in: searchMemberIds };
+    }
   }
 
   const [items, total] = await Promise.all([
@@ -710,9 +732,20 @@ const history = asyncHandler(async (req, res) => {
 });
 
 const checkIn = asyncHandler(async (req, res) => {
+  const member = await Member.findOne({ _id: req.body.member, gymId: req.gymId });
+  if (!member) throw new AppError("Member not found", 404);
+  if (req.user && req.user.role !== "superadmin") {
+    const userBranch = (req.user.branchCode || "MAIN").trim().toUpperCase();
+    const memBranch = (member.branchCode || "MAIN").trim().toUpperCase();
+    if (userBranch !== memBranch) {
+      throw new AppError("Member not found in your branch", 404);
+    }
+  }
+
   const today = getTodayDate();
   const entry = await Attendance.create({
     gymId: req.gymId,
+    branchCode: member.branchCode || "MAIN",
     member: req.body.member,
     date: today,
     faceRecognitionMatched: req.body.faceRecognitionMatched ?? null
@@ -722,12 +755,25 @@ const checkIn = asyncHandler(async (req, res) => {
 });
 
 const checkOut = asyncHandler(async (req, res) => {
-  const entry = await Attendance.findOneAndUpdate(
-    { _id: req.params.id, gymId: req.gymId, deletedAt: null },
-    { checkOut: new Date(), status: "completed" },
-    { new: true }
-  );
+  const entry = await Attendance.findOne({
+    _id: req.params.id,
+    gymId: req.gymId,
+    deletedAt: null
+  }).populate("member");
   if (!entry) throw new AppError("Attendance record not found", 404);
+
+  if (req.user && req.user.role !== "superadmin") {
+    const userBranch = (req.user.branchCode || "MAIN").trim().toUpperCase();
+    const attBranch = (entry.branchCode || entry.member?.branchCode || "MAIN").trim().toUpperCase();
+    if (userBranch !== attBranch) {
+      throw new AppError("Attendance record not found in your branch", 404);
+    }
+  }
+
+  entry.checkOut = new Date();
+  entry.status = "completed";
+  await entry.save();
+
   if (req.app.locals.io) req.app.locals.io.to(req.gymId).emit("attendance:checkout", entry);
   sendResponse(res, { message: "Checked out", data: entry });
 });
@@ -804,9 +850,17 @@ const updateAttendance = asyncHandler(async (req, res) => {
     _id: req.params.id,
     gymId: req.gymId,
     deletedAt: null
-  });
+  }).populate("member");
 
   if (!attendance) throw new AppError("Attendance record not found", 404);
+
+  if (req.user.role !== "superadmin") {
+    const userBranch = (req.user.branchCode || "MAIN").trim().toUpperCase();
+    const attBranch = (attendance.branchCode || attendance.member?.branchCode || "MAIN").trim().toUpperCase();
+    if (userBranch !== attBranch) {
+      throw new AppError("Attendance record not found in your branch", 404);
+    }
+  }
 
   const { status, notes, checkIn, checkOut } = req.body;
 
@@ -837,9 +891,17 @@ const deleteAttendance = asyncHandler(async (req, res) => {
     _id: req.params.id,
     gymId: req.gymId,
     deletedAt: null
-  });
+  }).populate("member");
 
   if (!attendance) throw new AppError("Attendance record not found", 404);
+
+  if (req.user.role !== "superadmin") {
+    const userBranch = (req.user.branchCode || "MAIN").trim().toUpperCase();
+    const attBranch = (attendance.branchCode || attendance.member?.branchCode || "MAIN").trim().toUpperCase();
+    if (userBranch !== attBranch) {
+      throw new AppError("Attendance record not found in your branch", 404);
+    }
+  }
 
   attendance.auditLogs.push({
     action: "delete",

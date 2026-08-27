@@ -13,7 +13,7 @@ const path = require("path");
 
 const { connectDb, isDbConnected } = require("./config/db");
 const { asyncHandler } = require("./utils/asyncHandler");
-const { seedData } = require("./seeds/seedLogic");
+const { seedData, ensureDevSuperadmin, ensureDevTrainer, ensureDevMember } = require("./seeds/seedLogic");
 const { connectRedis } = require("./config/redis");
 const { configureCloudinary } = require("./config/cloudinary");
 const { errorHandler } = require("./middlewares/error.middleware");
@@ -222,6 +222,11 @@ app.use(
 );
 
 app.use(
+  "/api/analytics",
+  require("./routes/analytics.routes")
+);
+
+app.use(
   "/api/progress",
   require("./routes/progress.routes")
 );
@@ -232,8 +237,18 @@ app.use(
 );
 
 app.use(
+  "/api/branches",
+  require("./routes/branch.routes")
+);
+
+app.use(
   "/api/trainers",
   require("./routes/trainer.routes")
+);
+
+app.use(
+  "/api/admins",
+  require("./routes/admin.routes")
 );
 
 app.use(
@@ -405,12 +420,11 @@ const start = async () => {
     app.locals.dbReady = dbReady;
 
     if (dbReady) {
-      console.log(
-        "Database connection successful"
-      );
-
-      // Auto-seed if database is empty
+      console.log("Database connection successful");
       await seedData();
+      await ensureDevSuperadmin();
+      await ensureDevTrainer();
+      await ensureDevMember();
     } else {
       console.warn(
         "Database is unavailable. " +

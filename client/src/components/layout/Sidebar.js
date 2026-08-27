@@ -1,6 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, UserSquare2, CreditCard, CalendarCheck, Settings, LogOut, Dumbbell, ClipboardList, X } from 'lucide-react';
+import { LayoutDashboard, Users, UserSquare2, CreditCard, FileText, CalendarCheck, Settings, LogOut, Dumbbell, ClipboardList, BarChart3, Building2, Shield, X } from 'lucide-react';
 import { useAuthStore } from '../../store/auth.store';
 import { logout as logoutApi } from '../../features/auth/auth.api';
 const Sidebar = ({ isOpen, onClose }) => {
@@ -17,16 +17,20 @@ const Sidebar = ({ isOpen, onClose }) => {
         navigate('/login');
     };
     const navItems = [
-        { name: 'Dashboard', path: '/', icon: _jsx(LayoutDashboard, { size: 20 }), roles: ['admin', 'trainer'] },
-        { name: 'Members', path: '/members', icon: _jsx(Users, { size: 20 }), roles: ['admin', 'trainer'] },
-        { name: 'Trainers', path: '/trainers', icon: _jsx(UserSquare2, { size: 20 }), roles: ['admin'] },
-        { name: 'Plans', path: '/plans', icon: _jsx(ClipboardList, { size: 20 }), roles: ['admin'] },
-        { name: 'Attendance', path: '/attendance', icon: _jsx(CalendarCheck, { size: 20 }), roles: ['admin', 'trainer'] },
+        { name: 'Dashboard', path: '/', icon: _jsx(LayoutDashboard, { size: 20 }), roles: ['superadmin', 'admin', 'trainer'] },
+        { name: 'Analytics', path: '/analytics', icon: _jsx(BarChart3, { size: 20 }), roles: ['superadmin', 'admin', 'trainer'] },
+        { name: 'Branches', path: '/branches', icon: _jsx(Building2, { size: 20 }), roles: ['superadmin', 'admin'] },
+        { name: 'Members', path: '/members', icon: _jsx(Users, { size: 20 }), roles: ['superadmin', 'admin', 'trainer'] },
+        { name: 'Admins', path: '/admins', icon: _jsx(Shield, { size: 20 }), roles: ['superadmin'] },
+        { name: 'Trainers', path: '/trainers', icon: _jsx(UserSquare2, { size: 20 }), roles: ['superadmin', 'admin'] },
+        { name: 'Plans', path: '/plans', icon: _jsx(ClipboardList, { size: 20 }), roles: ['superadmin', 'admin'] },
+        { name: 'Attendance', path: '/attendance', icon: _jsx(CalendarCheck, { size: 20 }), roles: ['superadmin', 'admin', 'trainer'] },
         { name: 'My Attendance', path: '/my-attendance', icon: _jsx(CalendarCheck, { size: 20 }), roles: ['member'] },
-        { name: 'Workouts & Diet', path: '/workouts', icon: _jsx(Dumbbell, { size: 20 }), roles: ['admin', 'trainer', 'member'] },
-        { name: 'Payments', path: '/payments', icon: _jsx(CreditCard, { size: 20 }), roles: ['admin', 'member'] },
+        { name: 'Workouts & Diet', path: '/workouts', icon: _jsx(Dumbbell, { size: 20 }), roles: ['superadmin', 'admin', 'trainer', 'member'] },
+        { name: 'Payments', path: '/payments', icon: _jsx(CreditCard, { size: 20 }), roles: ['superadmin', 'admin', 'member'] },
+        { name: 'Invoices', path: '/invoices', icon: _jsx(FileText, { size: 20 }), roles: ['superadmin', 'admin', 'trainer', 'member'] },
     ];
-    const filteredNavItems = navItems.filter(item => !item.roles || (user && item.roles.includes(user.role)));
+    const filteredNavItems = navItems.filter(item => !item.roles || (user && (user.role === 'superadmin' ? item.name !== 'My Attendance' : item.roles.includes(user.role))));
     return (_jsxs("aside", { className: `sidebar ${isOpen ? 'open' : ''}`, children: [_jsxs("div", { className: "sidebar-header", children: [_jsxs("div", { className: "sidebar-logo", children: [_jsx("img", { src: "https://res.cloudinary.com/dyc33dchn/image/upload/q_auto/f_auto/v1776476678/WhatsApp_Image_2026-04-15_at_10.11.03_PM_2_jvuq84.jpg", alt: "RUDRA FITNESS", style: {
                                     width: '40px',
                                     height: '40px',
