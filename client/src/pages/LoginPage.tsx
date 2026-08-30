@@ -344,7 +344,7 @@ export default function LoginPage() {
                 <option value="member">Member</option>
                 <option value="trainer">Trainer</option>
                 <option value="admin">Admin</option>
-                {import.meta.env.DEV && <option value="superadmin">Superadmin</option>}
+                <option value="superadmin">Superadmin</option>
               </select>
             </div>
 
