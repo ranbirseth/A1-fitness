@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Check, X, Plus, Trash2, Edit2, Save, IndianRupee, Clock, Zap, Search, UserPlus, Building2, ChevronDown, ChevronUp } from 'lucide-react';
-import { getPlans, createPlan, deletePlan, updatePlan, applyPlanToBranch, removePlanFromBranch } from '../features/plans/plans.api';
+import { Check, X, Plus, Trash2, Edit2, Save, IndianRupee, Clock, Zap, Search, UserPlus, Building2 } from 'lucide-react';
+import { getPlans, createPlan, updatePlan, deletePlan, applyPlanToBranch, removePlanFromBranch } from '../features/plans/plans.api';
 import { getMembers, assignPlan } from '../features/members/members.api';
 import { recordPayment } from '../features/payments/payments.api';
 import { useDebounce } from '../hooks/useDebounce';
@@ -15,11 +15,12 @@ const PlansPage: React.FC = () => {
 
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '', price: 0, duration: 30, features: [] as string[] });
   const [featureInput, setFeatureInput] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedPlanForAssign, setSelectedPlanForAssign] = useState<any>(null);
@@ -99,51 +100,6 @@ const PlansPage: React.FC = () => {
     }
   };
 
-  const handleOpenAdd = () => {
-    setEditingId(null);
-    setFormData({ name: '', price: 0, duration: 30, features: [] });
-    setIsModalOpen(true);
-  };
-
-  const handleOpenEdit = (plan: any) => {
-    setEditingId(plan._id);
-    setFormData({
-      name: plan.name,
-      price: plan.price,
-      duration: plan.duration,
-      features: plan.features || []
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-    try {
-      if (editingId) {
-        await updatePlan(editingId, formData);
-      } else {
-        await createPlan(formData);
-      }
-      setIsModalOpen(false);
-      fetchPlans();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save plan');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this plan? This cannot be undone if members are using it.')) return;
-    try {
-      await deletePlan(id);
-      fetchPlans();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to delete plan');
-    }
-  };
-
   const handleOpenApplyBranch = (plan: any) => {
     setSelectedPlanForBranch(plan);
     setSelectedBranchCode('');
@@ -174,109 +130,176 @@ const PlansPage: React.FC = () => {
     }
   };
 
+  const handleOpenAdd = () => {
+    setEditingId(null);
+    setFormData({ name: '', price: 0, duration: 30, features: [] });
+    setFeatureInput('');
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEdit = (plan: any) => {
+    setEditingId(plan._id);
+    setFormData({
+      name: plan.name,
+      price: plan.price,
+      duration: plan.duration,
+      features: [...(plan.features || [])]
+    });
+    setFeatureInput('');
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.name.trim() || formData.price <= 0) {
+      alert('Please provide a plan name and a valid price.');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const payload = {
+        name: formData.name.trim(),
+        price: formData.price,
+        duration: formData.duration,
+        features: formData.features.filter(f => f.trim())
+      };
+      if (editingId) {
+        await updatePlan(editingId, payload);
+      } else {
+        await createPlan(payload);
+      }
+      setIsModalOpen(false);
+      fetchPlans();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to save plan');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (plan: any) => {
+    if (!window.confirm(`Delete the plan "${plan.name}"?`)) return;
+    try {
+      await deletePlan(plan._id);
+      fetchPlans();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to delete plan');
+    }
+  };
+
   const addFeature = () => {
     if (!featureInput.trim()) return;
-    setFormData({ ...formData, features: [...formData.features, featureInput.trim()] });
+    setFormData(prev => ({ ...prev, features: [...prev.features, featureInput.trim()] }));
     setFeatureInput('');
   };
 
-  const removeFeature = (index: number) => {
-    setFormData({ ...formData, features: formData.features.filter((_, i) => i !== index) });
+  const removeFeature = (idx: number) => {
+    setFormData(prev => ({ ...prev, features: prev.features.filter((_, i) => i !== idx) }));
   };
 
   return (
     <div>
       <div className="page-header" style={{ marginBottom: '3rem' }}>
-        <div className="flex-responsive" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1.5rem' }}>
-          <div>
-            <h1>Membership Plans</h1>
-            <p className="text-muted">Create and manage gym subscription plans.</p>
-          </div>
-          <button className="btn btn-primary" onClick={handleOpenAdd}>
-            <Plus size={18} />
-            Add New Plan
-          </button>
+        <div>
+          <h1>Membership Plans</h1>
+          <p className="text-muted">
+            {isSuperAdmin
+              ? 'Create and manage the global plan catalog, then apply plans to branches.'
+              : 'Plans available for your branch can be assigned to members.'}
+          </p>
         </div>
+        {isSuperAdmin && (
+          <button className="btn btn-primary" onClick={handleOpenAdd}>
+            <Plus size={16} /> Add New Plan
+          </button>
+        )}
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingId ? "Edit Plan" : "Add New Plan"}>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <div style={{ flex: 1 }}>
-            <div className="form-group">
-              <label className="form-label">Plan Name</label>
-              <input 
-                className="form-input" 
-                required 
-                value={formData.name}
-                onChange={e => setFormData({...formData, name: e.target.value})}
-                placeholder="e.g. Basic Monthly, Pro Yearly"
-              />
-            </div>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div className="form-group">
-                <label className="form-label">Price (₹)</label>
-                <div style={{ position: 'relative' }}>
-                  <IndianRupee size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' }} />
-                  <input 
-                    className="form-input" 
-                    style={{ paddingLeft: '35px' }}
-                    type="number"
-                    required 
-                    min="0"
-                    value={formData.price}
-                    onChange={e => setFormData({...formData, price: Number(e.target.value)})}
-                  />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Duration (Days)</label>
-                <div style={{ position: 'relative' }}>
-                  <Clock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' }} />
-                  <input 
-                    className="form-input" 
-                    style={{ paddingLeft: '35px' }}
-                    type="number"
-                    required 
-                    min="1"
-                    value={formData.duration}
-                    onChange={e => setFormData({...formData, duration: Number(e.target.value)})}
-                  />
-                </div>
-              </div>
-            </div>
+      {isSuperAdmin && (
+        <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingId ? 'Edit Plan' : 'Add New Plan'}>
+          <div className="form-group">
+            <label className="form-label">Plan Name</label>
+            <input
+              className="form-input"
+              placeholder="e.g. Premium Monthly"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
+          </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="form-group">
-              <label className="form-label">Plan Features</label>
-              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                <input 
-                  className="form-input" 
-                  value={featureInput}
-                  onChange={e => setFeatureInput(e.target.value)}
-                  placeholder="Add a feature (e.g. Personal Trainer)..."
-                  onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addFeature())}
+              <label className="form-label">Price (₹)</label>
+              <div style={{ position: 'relative' }}>
+                <IndianRupee size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' }} />
+                <input
+                  className="form-input"
+                  type="number"
+                  min={0}
+                  style={{ paddingLeft: '36px' }}
+                  value={formData.price}
+                  onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
                 />
-                <button type="button" className="btn btn-secondary" onClick={addFeature}>Add</button>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                {formData.features.map((f, i) => (
-                  <span key={i} className="status-badge active" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.8rem' }}>
-                    {f}
-                    <X size={14} style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => removeFeature(i)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Duration (days)</label>
+              <div style={{ position: 'relative' }}>
+                <Clock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' }} />
+                <input
+                  className="form-input"
+                  type="number"
+                  min={1}
+                  style={{ paddingLeft: '36px' }}
+                  value={formData.duration}
+                  onChange={(e) => setFormData({ ...formData, duration: Number(e.target.value) })}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Features</label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                className="form-input"
+                placeholder="Add a feature"
+                value={featureInput}
+                onChange={(e) => setFeatureInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addFeature(); } }}
+              />
+              <button type="button" className="btn btn-secondary" onClick={addFeature}>
+                <Plus size={16} />
+              </button>
+            </div>
+            {(formData.features || []).length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.75rem' }}>
+                {formData.features.map((feature, idx) => (
+                  <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(139, 92, 246, 0.12)', color: 'var(--clr-primary)', padding: '0.3rem 0.7rem', borderRadius: '20px', fontSize: '0.85rem' }}>
+                    {feature}
+                    <span
+                      role="button"
+                      onClick={() => removeFeature(idx)}
+                      style={{ cursor: 'pointer', display: 'inline-flex' }}
+                      title="Remove feature"
+                    >
+                      <X size={14} />
+                    </span>
                   </span>
                 ))}
               </div>
-            </div>
+            )}
           </div>
 
-          <div style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)', position: 'sticky', bottom: 0, background: 'var(--clr-bg-sidebar)', zIndex: 10 }}>
-            <button className="btn btn-primary w-full" type="submit" disabled={isSaving}>
-              <Save size={18} />
-              {isSaving ? 'Saving...' : (editingId ? 'Update Plan' : 'Create Plan')}
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+            <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setIsModalOpen(false)}>
+              Cancel
+            </button>
+            <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSubmit} disabled={isSaving}>
+              <Save size={16} /> {isSaving ? 'Saving...' : (editingId ? 'Save Changes' : 'Create Plan')}
             </button>
           </div>
-        </form>
-      </Modal>
+        </Modal>
+      )}
 
       <Modal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} title={`Assign ${selectedPlanForAssign?.name} to Member`}>
         <div className="form-group">
@@ -384,15 +407,6 @@ const PlansPage: React.FC = () => {
               position: 'relative',
               textAlign: 'center'
             }}>
-              <div style={{ position: 'absolute', top: '1.25rem', right: '1.25rem', display: 'flex', gap: '0.5rem' }}>
-                <button className="btn-icon" onClick={() => handleOpenEdit(plan)} title="Edit">
-                  <Edit2 size={14} />
-                </button>
-                <button className="btn-icon danger" onClick={() => handleDelete(plan._id)} title="Delete">
-                  <Trash2 size={14} />
-                </button>
-              </div>
-
               <div style={{ 
                 display: 'inline-flex', 
                 padding: '0.75rem', 
@@ -464,6 +478,27 @@ const PlansPage: React.FC = () => {
                 </div>
               )}
 
+              {isSuperAdmin && (
+                <div style={{ position: 'absolute', top: '1rem', right: '1rem', display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className="btn-icon"
+                    title="Edit plan"
+                    onClick={() => handleOpenEdit(plan)}
+                    style={{ background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', boxShadow: 'none' }}
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                  <button
+                    className="btn-icon"
+                    title="Delete plan"
+                    onClick={() => handleDelete(plan)}
+                    style={{ background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', boxShadow: 'none' }}
+                  >
+                    <Trash2 size={16} className="text-danger" />
+                  </button>
+                </div>
+              )}
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {isSuperAdmin && (
                   <button 
@@ -493,13 +528,12 @@ const PlansPage: React.FC = () => {
           <h3>No plans created yet</h3>
           <p className="text-muted" style={{ marginBottom: '2rem' }}>
             {isSuperAdmin 
-              ? 'Get started by creating your first membership plan and applying it to branches.'
+              ? 'No plans are available yet. They must be added before they can be applied to branches.'
               : 'No plans are currently available for your branch. Ask the superadmin to apply plans.'}
           </p>
           {isSuperAdmin && (
             <button className="btn btn-primary" onClick={handleOpenAdd}>
-              <Plus size={18} />
-              Add First Plan
+              <Plus size={16} /> Add First Plan
             </button>
           )}
         </div>

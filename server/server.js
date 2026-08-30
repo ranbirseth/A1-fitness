@@ -18,6 +18,7 @@ const { connectRedis } = require("./config/redis");
 const { configureCloudinary } = require("./config/cloudinary");
 const { errorHandler } = require("./middlewares/error.middleware");
 const { startExpiryReminderJob } = require("./jobs/expiryReminder.job");
+const { backfillTemplateBranches } = require("./services/templateBranch.service");
 
 // ============================================================
 // EXPRESS APP
@@ -425,6 +426,9 @@ const start = async () => {
       await ensureDevSuperadmin();
       await ensureDevTrainer();
       await ensureDevMember();
+      // One-time idempotent migration: build junction rows for legacy templates
+      // that were stored with a single branchCode field.
+      await backfillTemplateBranches();
     } else {
       console.warn(
         "Database is unavailable. " +

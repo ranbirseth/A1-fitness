@@ -258,7 +258,7 @@ const demoLogin = asyncHandler(async (req, res) => {
     throw new AppError("Invalid demo role", 400);
   }
 
-  // Find the seeded dev account for the requested role.
+// dev accounts are seeded in the DB at startup, but if they get deleted or deactivated, we can self-heal them here.
   let user = await User.findOne({
     email: account.email,
     gymId: DEMO_GYM_ID,

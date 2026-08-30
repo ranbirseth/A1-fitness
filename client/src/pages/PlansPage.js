@@ -1,7 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useState } from 'react';
 import { Check, X, Plus, Trash2, Edit2, Save, IndianRupee, Clock, Zap, Search, UserPlus, Building2 } from 'lucide-react';
-import { getPlans, createPlan, deletePlan, updatePlan, applyPlanToBranch, removePlanFromBranch } from '../features/plans/plans.api';
+import { getPlans, createPlan, updatePlan, deletePlan, applyPlanToBranch, removePlanFromBranch } from '../features/plans/plans.api';
 import { getMembers, assignPlan } from '../features/members/members.api';
 import { recordPayment } from '../features/payments/payments.api';
 import { useDebounce } from '../hooks/useDebounce';
@@ -15,10 +15,10 @@ const PlansPage = () => {
     const [plans, setPlans] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [formData, setFormData] = useState({ name: '', price: 0, duration: 30, features: [] });
     const [featureInput, setFeatureInput] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [selectedPlanForAssign, setSelectedPlanForAssign] = useState(null);
     const [members, setMembers] = useState([]);
@@ -95,52 +95,6 @@ const PlansPage = () => {
             setIsAssigning(false);
         }
     };
-    const handleOpenAdd = () => {
-        setEditingId(null);
-        setFormData({ name: '', price: 0, duration: 30, features: [] });
-        setIsModalOpen(true);
-    };
-    const handleOpenEdit = (plan) => {
-        setEditingId(plan._id);
-        setFormData({
-            name: plan.name,
-            price: plan.price,
-            duration: plan.duration,
-            features: plan.features || []
-        });
-        setIsModalOpen(true);
-    };
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setIsSaving(true);
-        try {
-            if (editingId) {
-                await updatePlan(editingId, formData);
-            }
-            else {
-                await createPlan(formData);
-            }
-            setIsModalOpen(false);
-            fetchPlans();
-        }
-        catch (error) {
-            alert(error.response?.data?.message || 'Failed to save plan');
-        }
-        finally {
-            setIsSaving(false);
-        }
-    };
-    const handleDelete = async (id) => {
-        if (!window.confirm('Are you sure you want to delete this plan? This cannot be undone if members are using it.'))
-            return;
-        try {
-            await deletePlan(id);
-            fetchPlans();
-        }
-        catch (error) {
-            alert(error.response?.data?.message || 'Failed to delete plan');
-        }
-    };
     const handleOpenApplyBranch = (plan) => {
         setSelectedPlanForBranch(plan);
         setSelectedBranchCode('');
@@ -173,16 +127,78 @@ const PlansPage = () => {
             alert(error.response?.data?.message || 'Failed to remove plan from branch');
         }
     };
+    const handleOpenAdd = () => {
+        setEditingId(null);
+        setFormData({ name: '', price: 0, duration: 30, features: [] });
+        setFeatureInput('');
+        setIsModalOpen(true);
+    };
+    const handleOpenEdit = (plan) => {
+        setEditingId(plan._id);
+        setFormData({
+            name: plan.name,
+            price: plan.price,
+            duration: plan.duration,
+            features: [...(plan.features || [])]
+        });
+        setFeatureInput('');
+        setIsModalOpen(true);
+    };
+    const handleSubmit = async () => {
+        if (!formData.name.trim() || formData.price <= 0) {
+            alert('Please provide a plan name and a valid price.');
+            return;
+        }
+        setIsSaving(true);
+        try {
+            const payload = {
+                name: formData.name.trim(),
+                price: formData.price,
+                duration: formData.duration,
+                features: formData.features.filter(f => f.trim())
+            };
+            if (editingId) {
+                await updatePlan(editingId, payload);
+            }
+            else {
+                await createPlan(payload);
+            }
+            setIsModalOpen(false);
+            fetchPlans();
+        }
+        catch (error) {
+            alert(error.response?.data?.message || 'Failed to save plan');
+        }
+        finally {
+            setIsSaving(false);
+        }
+    };
+    const handleDelete = async (plan) => {
+        if (!window.confirm(`Delete the plan "${plan.name}"?`))
+            return;
+        try {
+            await deletePlan(plan._id);
+            fetchPlans();
+        }
+        catch (error) {
+            alert(error.response?.data?.message || 'Failed to delete plan');
+        }
+    };
     const addFeature = () => {
         if (!featureInput.trim())
             return;
-        setFormData({ ...formData, features: [...formData.features, featureInput.trim()] });
+        setFormData(prev => ({ ...prev, features: [...prev.features, featureInput.trim()] }));
         setFeatureInput('');
     };
-    const removeFeature = (index) => {
-        setFormData({ ...formData, features: formData.features.filter((_, i) => i !== index) });
+    const removeFeature = (idx) => {
+        setFormData(prev => ({ ...prev, features: prev.features.filter((_, i) => i !== idx) }));
     };
-    return (_jsxs("div", { children: [_jsx("div", { className: "page-header", style: { marginBottom: '3rem' }, children: _jsxs("div", { className: "flex-responsive", style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1.5rem' }, children: [_jsxs("div", { children: [_jsx("h1", { children: "Membership Plans" }), _jsx("p", { className: "text-muted", children: "Create and manage gym subscription plans." })] }), _jsxs("button", { className: "btn btn-primary", onClick: handleOpenAdd, children: [_jsx(Plus, { size: 18 }), "Add New Plan"] })] }) }), _jsx(Modal, { isOpen: isModalOpen, onClose: () => setIsModalOpen(false), title: editingId ? "Edit Plan" : "Add New Plan", children: _jsxs("form", { onSubmit: handleSubmit, style: { display: 'flex', flexDirection: 'column', height: '100%' }, children: [_jsxs("div", { style: { flex: 1 }, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Plan Name" }), _jsx("input", { className: "form-input", required: true, value: formData.name, onChange: e => setFormData({ ...formData, name: e.target.value }), placeholder: "e.g. Basic Monthly, Pro Yearly" })] }), _jsxs("div", { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Price (\u20B9)" }), _jsxs("div", { style: { position: 'relative' }, children: [_jsx(IndianRupee, { size: 16, style: { position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' } }), _jsx("input", { className: "form-input", style: { paddingLeft: '35px' }, type: "number", required: true, min: "0", value: formData.price, onChange: e => setFormData({ ...formData, price: Number(e.target.value) }) })] })] }), _jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Duration (Days)" }), _jsxs("div", { style: { position: 'relative' }, children: [_jsx(Clock, { size: 16, style: { position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' } }), _jsx("input", { className: "form-input", style: { paddingLeft: '35px' }, type: "number", required: true, min: "1", value: formData.duration, onChange: e => setFormData({ ...formData, duration: Number(e.target.value) }) })] })] })] }), _jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Plan Features" }), _jsxs("div", { style: { display: 'flex', gap: '0.5rem', marginBottom: '1rem' }, children: [_jsx("input", { className: "form-input", value: featureInput, onChange: e => setFeatureInput(e.target.value), placeholder: "Add a feature (e.g. Personal Trainer)...", onKeyPress: e => e.key === 'Enter' && (e.preventDefault(), addFeature()) }), _jsx("button", { type: "button", className: "btn btn-secondary", onClick: addFeature, children: "Add" })] }), _jsx("div", { style: { display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }, children: formData.features.map((f, i) => (_jsxs("span", { className: "status-badge active", style: { display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.8rem' }, children: [f, _jsx(X, { size: 14, style: { cursor: 'pointer', opacity: 0.7 }, onClick: () => removeFeature(i) })] }, i))) })] })] }), _jsx("div", { style: { marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)', position: 'sticky', bottom: 0, background: 'var(--clr-bg-sidebar)', zIndex: 10 }, children: _jsxs("button", { className: "btn btn-primary w-full", type: "submit", disabled: isSaving, children: [_jsx(Save, { size: 18 }), isSaving ? 'Saving...' : (editingId ? 'Update Plan' : 'Create Plan')] }) })] }) }), _jsxs(Modal, { isOpen: isAssignModalOpen, onClose: () => setIsAssignModalOpen(false), title: `Assign ${selectedPlanForAssign?.name} to Member`, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Search Member" }), _jsxs("div", { style: { position: 'relative' }, children: [_jsx(Search, { size: 18, style: { position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' } }), _jsx("input", { className: "form-input", style: { paddingLeft: '40px' }, placeholder: "Type member name or email...", value: memberSearchQuery, onChange: (e) => setMemberSearchQuery(e.target.value) })] })] }), _jsxs("div", { className: "form-group", style: { display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1rem' }, children: [_jsx("input", { type: "checkbox", id: "recordAssignPayment", checked: recordAssignPayment, onChange: (e) => setRecordAssignPayment(e.target.checked), style: { width: '18px', height: '18px', cursor: 'pointer' } }), _jsx("label", { htmlFor: "recordAssignPayment", style: { cursor: 'pointer', fontSize: '0.9rem', fontWeight: '500' }, children: "Mark as Paid immediately (Cash) - Recommended to avoid Access Restricted page" })] }), _jsx("div", { style: { marginTop: '1.5rem', maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }, children: members.length > 0 ? (members.map((member) => (_jsxs("div", { className: "glass-panel", style: {
+    return (_jsxs("div", { children: [_jsxs("div", { className: "page-header", style: { marginBottom: '3rem' }, children: [_jsxs("div", { children: [_jsx("h1", { children: "Membership Plans" }), _jsx("p", { className: "text-muted", children: isSuperAdmin
+                                    ? 'Create and manage the global plan catalog, then apply plans to branches.'
+                                    : 'Plans available for your branch can be assigned to members.' })] }), isSuperAdmin && (_jsxs("button", { className: "btn btn-primary", onClick: handleOpenAdd, children: [_jsx(Plus, { size: 16 }), " Add New Plan"] }))] }), isSuperAdmin && (_jsxs(Modal, { isOpen: isModalOpen, onClose: () => setIsModalOpen(false), title: editingId ? 'Edit Plan' : 'Add New Plan', children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Plan Name" }), _jsx("input", { className: "form-input", placeholder: "e.g. Premium Monthly", value: formData.name, onChange: (e) => setFormData({ ...formData, name: e.target.value }) })] }), _jsxs("div", { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Price (\u20B9)" }), _jsxs("div", { style: { position: 'relative' }, children: [_jsx(IndianRupee, { size: 16, style: { position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' } }), _jsx("input", { className: "form-input", type: "number", min: 0, style: { paddingLeft: '36px' }, value: formData.price, onChange: (e) => setFormData({ ...formData, price: Number(e.target.value) }) })] })] }), _jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Duration (days)" }), _jsxs("div", { style: { position: 'relative' }, children: [_jsx(Clock, { size: 16, style: { position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' } }), _jsx("input", { className: "form-input", type: "number", min: 1, style: { paddingLeft: '36px' }, value: formData.duration, onChange: (e) => setFormData({ ...formData, duration: Number(e.target.value) }) })] })] })] }), _jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Features" }), _jsxs("div", { style: { display: 'flex', gap: '0.5rem' }, children: [_jsx("input", { className: "form-input", placeholder: "Add a feature", value: featureInput, onChange: (e) => setFeatureInput(e.target.value), onKeyDown: (e) => { if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            addFeature();
+                                        } } }), _jsx("button", { type: "button", className: "btn btn-secondary", onClick: addFeature, children: _jsx(Plus, { size: 16 }) })] }), (formData.features || []).length > 0 && (_jsx("div", { style: { display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.75rem' }, children: formData.features.map((feature, idx) => (_jsxs("span", { style: { display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(139, 92, 246, 0.12)', color: 'var(--clr-primary)', padding: '0.3rem 0.7rem', borderRadius: '20px', fontSize: '0.85rem' }, children: [feature, _jsx("span", { role: "button", onClick: () => removeFeature(idx), style: { cursor: 'pointer', display: 'inline-flex' }, title: "Remove feature", children: _jsx(X, { size: 14 }) })] }, idx))) }))] }), _jsxs("div", { style: { display: 'flex', gap: '1rem', marginTop: '1.5rem' }, children: [_jsx("button", { className: "btn btn-secondary", style: { flex: 1 }, onClick: () => setIsModalOpen(false), children: "Cancel" }), _jsxs("button", { className: "btn btn-primary", style: { flex: 1 }, onClick: handleSubmit, disabled: isSaving, children: [_jsx(Save, { size: 16 }), " ", isSaving ? 'Saving...' : (editingId ? 'Save Changes' : 'Create Plan')] })] })] })), _jsxs(Modal, { isOpen: isAssignModalOpen, onClose: () => setIsAssignModalOpen(false), title: `Assign ${selectedPlanForAssign?.name} to Member`, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Search Member" }), _jsxs("div", { style: { position: 'relative' }, children: [_jsx(Search, { size: 18, style: { position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' } }), _jsx("input", { className: "form-input", style: { paddingLeft: '40px' }, placeholder: "Type member name or email...", value: memberSearchQuery, onChange: (e) => setMemberSearchQuery(e.target.value) })] })] }), _jsxs("div", { className: "form-group", style: { display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1rem' }, children: [_jsx("input", { type: "checkbox", id: "recordAssignPayment", checked: recordAssignPayment, onChange: (e) => setRecordAssignPayment(e.target.checked), style: { width: '18px', height: '18px', cursor: 'pointer' } }), _jsx("label", { htmlFor: "recordAssignPayment", style: { cursor: 'pointer', fontSize: '0.9rem', fontWeight: '500' }, children: "Mark as Paid immediately (Cash) - Recommended to avoid Access Restricted page" })] }), _jsx("div", { style: { marginTop: '1.5rem', maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }, children: members.length > 0 ? (members.map((member) => (_jsxs("div", { className: "glass-panel", style: {
                                 display: 'flex',
                                 justifyContent: 'space-between',
                                 alignItems: 'center',
@@ -193,7 +209,7 @@ const PlansPage = () => {
                         padding: '2.5rem',
                         position: 'relative',
                         textAlign: 'center'
-                    }, children: [_jsxs("div", { style: { position: 'absolute', top: '1.25rem', right: '1.25rem', display: 'flex', gap: '0.5rem' }, children: [_jsx("button", { className: "btn-icon", onClick: () => handleOpenEdit(plan), title: "Edit", children: _jsx(Edit2, { size: 14 }) }), _jsx("button", { className: "btn-icon danger", onClick: () => handleDelete(plan._id), title: "Delete", children: _jsx(Trash2, { size: 14 }) })] }), _jsx("div", { style: {
+                    }, children: [_jsx("div", { style: {
                                 display: 'inline-flex',
                                 padding: '0.75rem',
                                 borderRadius: '16px',
@@ -209,8 +225,8 @@ const PlansPage = () => {
                                             borderRadius: '12px',
                                             background: 'rgba(139, 92, 246, 0.12)',
                                             color: 'var(--clr-primary)'
-                                        }, children: [_jsx(Building2, { size: 10 }), " ", bc, _jsx("span", { onClick: (e) => { e.stopPropagation(); handleRemoveFromBranch(plan._id, bc); }, title: `Remove from ${bc}`, style: { cursor: 'pointer', display: 'inline-flex' }, children: _jsx(X, { size: 12, style: { opacity: 0.7, marginLeft: '0.15rem' } }) })] }, bc))) })) : (_jsx("p", { className: "text-muted", style: { fontSize: '0.8rem', fontStyle: 'italic' }, children: "None" }))] })), _jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.5rem' }, children: [isSuperAdmin && (_jsxs("button", { className: "btn btn-secondary w-full", style: { justifyContent: 'center' }, onClick: () => handleOpenApplyBranch(plan), children: [_jsx(Building2, { size: 16 }), " Apply to Branch"] })), _jsx("button", { className: "btn btn-secondary w-full", style: { justifyContent: 'center' }, onClick: () => handleOpenAssignModal(plan), children: "Assign to Member" })] })] }, plan._id))) })), !loading && plans.length === 0 && (_jsxs("div", { className: "glass-panel text-center", style: { padding: '5rem' }, children: [_jsx(Zap, { size: 48, className: "text-muted", style: { marginBottom: '1.5rem', opacity: 0.3 } }), _jsx("h3", { children: "No plans created yet" }), _jsx("p", { className: "text-muted", style: { marginBottom: '2rem' }, children: isSuperAdmin
-                            ? 'Get started by creating your first membership plan and applying it to branches.'
-                            : 'No plans are currently available for your branch. Ask the superadmin to apply plans.' }), isSuperAdmin && (_jsxs("button", { className: "btn btn-primary", onClick: handleOpenAdd, children: [_jsx(Plus, { size: 18 }), "Add First Plan"] }))] }))] }));
+                                        }, children: [_jsx(Building2, { size: 10 }), " ", bc, _jsx("span", { onClick: (e) => { e.stopPropagation(); handleRemoveFromBranch(plan._id, bc); }, title: `Remove from ${bc}`, style: { cursor: 'pointer', display: 'inline-flex' }, children: _jsx(X, { size: 12, style: { opacity: 0.7, marginLeft: '0.15rem' } }) })] }, bc))) })) : (_jsx("p", { className: "text-muted", style: { fontSize: '0.8rem', fontStyle: 'italic' }, children: "None" }))] })), isSuperAdmin && (_jsxs("div", { style: { position: 'absolute', top: '1rem', right: '1rem', display: 'flex', gap: '0.5rem' }, children: [_jsx("button", { className: "btn-icon", title: "Edit plan", onClick: () => handleOpenEdit(plan), style: { background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', boxShadow: 'none' }, children: _jsx(Edit2, { size: 16 }) }), _jsx("button", { className: "btn-icon", title: "Delete plan", onClick: () => handleDelete(plan), style: { background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', boxShadow: 'none' }, children: _jsx(Trash2, { size: 16, className: "text-danger" }) })] })), _jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.5rem' }, children: [isSuperAdmin && (_jsxs("button", { className: "btn btn-secondary w-full", style: { justifyContent: 'center' }, onClick: () => handleOpenApplyBranch(plan), children: [_jsx(Building2, { size: 16 }), " Apply to Branch"] })), _jsx("button", { className: "btn btn-secondary w-full", style: { justifyContent: 'center' }, onClick: () => handleOpenAssignModal(plan), children: "Assign to Member" })] })] }, plan._id))) })), !loading && plans.length === 0 && (_jsxs("div", { className: "glass-panel text-center", style: { padding: '5rem' }, children: [_jsx(Zap, { size: 48, className: "text-muted", style: { marginBottom: '1.5rem', opacity: 0.3 } }), _jsx("h3", { children: "No plans created yet" }), _jsx("p", { className: "text-muted", style: { marginBottom: '2rem' }, children: isSuperAdmin
+                            ? 'No plans are available yet. They must be added before they can be applied to branches.'
+                            : 'No plans are currently available for your branch. Ask the superadmin to apply plans.' }), isSuperAdmin && (_jsxs("button", { className: "btn btn-primary", onClick: handleOpenAdd, children: [_jsx(Plus, { size: 16 }), " Add First Plan"] }))] }))] }));
 };
 export default PlansPage;

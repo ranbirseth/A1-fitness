@@ -25,7 +25,6 @@ function FilterBar({ filters, options, onChange }: any) {
     <select className="form-input" value={filters.planId || ""} onChange={e => update("planId", e.target.value)}><option value="">All plans</option>{options.plans?.map((item: any) => <option key={item._id} value={item._id}>{item.name}</option>)}</select>
     <select className="form-input" value={filters.paymentStatus || ""} onChange={e => update("paymentStatus", e.target.value)}><option value="">All payment statuses</option>{options.paymentStatuses?.map((item: string) => <option key={item} value={item}>{label(item)}</option>)}</select>
     <select className="form-input" value={filters.paymentMethod || ""} onChange={e => update("paymentMethod", e.target.value)}><option value="">All payment methods</option>{options.paymentMethods?.map((item: string) => <option key={item} value={item}>{label(item)}</option>)}</select>
-    <select className="form-input" value={filters.trainerId || ""} onChange={e => update("trainerId", e.target.value)}><option value="">All trainers</option>{options.trainers?.map((item: any) => <option key={item._id} value={item._id}>{item.name}</option>)}</select>
   </div>;
 }
 

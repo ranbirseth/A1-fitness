@@ -6,6 +6,7 @@ export const getInvoice = (paymentId) => http.get(`/payments/${paymentId}/invoic
 export const recordPayment = (payload) => http.post("/payments", payload);
 export const markAsPaid = (paymentId) => http.patch(`/payments/${paymentId}/paid`);
 export const markAsUnpaid = (paymentId) => http.patch(`/payments/${paymentId}/unpaid`);
+export const sendReminders = (branchCode) => http.post("/payments/reminders", {}, { params: branchCode ? { branchCode } : {} });
 export const getInvoiceDeliveryStatus = () => http.get("/payments/delivery-status");
 const getAccessToken = () => {
     try {

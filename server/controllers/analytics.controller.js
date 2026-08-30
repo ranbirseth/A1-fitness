@@ -5,6 +5,7 @@ const Member = require("../models/member.model");
 const Payment = require("../models/payment.model");
 const Attendance = require("../models/attendance.model");
 const Plan = require("../models/plan.model");
+const PlanBranch = require("../models/planBranch.model");
 const User = require("../models/user.model");
 const { Branch } = require("../models/generic.model");
 const { asyncHandler } = require("../utils/asyncHandler");
@@ -80,14 +81,13 @@ function fillSeries(keys, aggregateRows, valueKey = "total") {
 }
 
 function filterOptionsQuery(req) {
-  const { planId, trainerId, branchCode, memberStatus, paymentStatus, paymentMethod } = req.query;
+  const { planId, branchCode, memberStatus, paymentStatus, paymentMethod } = req.query;
   const effectiveBranch = req.user && req.user.role !== "superadmin"
     ? (req.user.branchCode || "MAIN").trim().toUpperCase()
     : (branchCode && branchCode !== "ALL" && branchCode !== "all" ? branchCode.trim().toUpperCase() : undefined);
 
   return {
     planId: planId || undefined,
-    trainerId: trainerId || undefined,
     branchCode: effectiveBranch,
     memberStatus: memberStatus || undefined,
     paymentStatus: paymentStatus || undefined,
@@ -107,7 +107,6 @@ const getReportOverview = asyncHandler(async (req, res) => {
 
   const memberBaseMatch = { gymId };
   if (filters.branchCode) memberBaseMatch.branchCode = filters.branchCode;
-  if (filters.trainerId) memberBaseMatch.trainer = new mongoose.Types.ObjectId(filters.trainerId);
   if (filters.memberStatus) memberBaseMatch.status = filters.memberStatus;
   if (filters.planId) memberBaseMatch.currentPlan = new mongoose.Types.ObjectId(filters.planId);
 
@@ -233,12 +232,11 @@ const getReportOverview = asyncHandler(async (req, res) => {
     (async () => {
       const attMatch = { gymId, checkIn: { $gte: start, $lte: end }, deletedAt: null };
       const pipeline = [];
-      if (filters.branchCode || filters.trainerId) {
+      if (filters.branchCode) {
         pipeline.push(
           { $lookup: { from: "members", localField: "member", foreignField: "_id", as: "_member" } },
           { $unwind: "$_member" },
-          ...(filters.branchCode ? [{ $match: { "_member.branchCode": filters.branchCode } }] : []),
-          ...(filters.trainerId ? [{ $match: { "_member.trainer": new mongoose.Types.ObjectId(filters.trainerId) } }] : [])
+          ...(filters.branchCode ? [{ $match: { "_member.branchCode": filters.branchCode } }] : [])
         );
       }
       pipeline.push({ $match: attMatch }, { $count: "count" });
@@ -249,12 +247,11 @@ const getReportOverview = asyncHandler(async (req, res) => {
       const { mode, keys } = getDateBuckets(start, end);
       const attMatch = { gymId, checkIn: { $gte: start, $lte: end }, deletedAt: null };
       const extra = [];
-      if (filters.branchCode || filters.trainerId) {
+      if (filters.branchCode) {
         extra.push(
           { $lookup: { from: "members", localField: "member", foreignField: "_id", as: "_member" } },
           { $unwind: "$_member" },
-          ...(filters.branchCode ? [{ $match: { "_member.branchCode": filters.branchCode } }] : []),
-          ...(filters.trainerId ? [{ $match: { "_member.trainer": new mongoose.Types.ObjectId(filters.trainerId) } }] : [])
+          ...(filters.branchCode ? [{ $match: { "_member.branchCode": filters.branchCode } }] : [])
         );
       }
       const groupId =
@@ -272,12 +269,11 @@ const getReportOverview = asyncHandler(async (req, res) => {
     (async () => {
       const attMatch = { gymId, checkIn: { $gte: start, $lte: end }, deletedAt: null };
       const extra = [];
-      if (filters.branchCode || filters.trainerId) {
+      if (filters.branchCode) {
         extra.push(
           { $lookup: { from: "members", localField: "member", foreignField: "_id", as: "_member" } },
           { $unwind: "$_member" },
-          ...(filters.branchCode ? [{ $match: { "_member.branchCode": filters.branchCode } }] : []),
-          ...(filters.trainerId ? [{ $match: { "_member.trainer": new mongoose.Types.ObjectId(filters.trainerId) } }] : [])
+          ...(filters.branchCode ? [{ $match: { "_member.branchCode": filters.branchCode } }] : [])
         );
       }
       return Attendance.aggregate([
@@ -347,9 +343,19 @@ const getFilterOptions = asyncHandler(async (req, res) => {
     branchQuery.branchCode = (req.user.branchCode || "MAIN").trim().toUpperCase();
   }
 
-  const [plans, trainers, branches, memberStatuses, paymentStatuses, paymentMethods, attendanceStatuses] = await Promise.all([
-    Plan.find({ gymId }).sort({ name: 1 }).select("name price duration branchCode").lean(),
-    User.find({ gymId, role: "trainer", ...(req.user?.role !== "superadmin" ? { branchCode: req.user.branchCode || "MAIN" } : {}) }).sort({ name: 1 }).select("name email specialty branchCode").lean(),
+  const plansQuery = { gymId };
+  if (req.user && req.user.role !== "superadmin") {
+    const userBranch = (req.user.branchCode || "MAIN").trim().toUpperCase();
+    const appliedPlanIds = await PlanBranch.distinct("planId", {
+      gymId,
+      branchCode: userBranch,
+      status: "active"
+    });
+    plansQuery._id = { $in: appliedPlanIds };
+  }
+
+  const [plans, branches, memberStatuses, paymentStatuses, paymentMethods, attendanceStatuses] = await Promise.all([
+    Plan.find(plansQuery).sort({ name: 1 }).select("name price duration branchCode").lean(),
     Branch.find(branchQuery).sort({ name: 1 }).select("name branchCode status").lean(),
     Member.aggregate([{ $match: { gymId, ...(req.user?.role !== "superadmin" ? { branchCode: req.user.branchCode || "MAIN" } : {}) } }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
     Payment.aggregate([{ $match: { gymId } }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
@@ -360,7 +366,6 @@ const getFilterOptions = asyncHandler(async (req, res) => {
     message: "Analytics filter options fetched",
     data: {
       plans,
-      trainers,
       branches: branches.length ? branches : [{ _id: "MAIN", branchCode: "MAIN", name: "Main Branch", status: "active" }],
       memberStatuses: memberStatuses.map(s => s._id).filter(Boolean),
       paymentStatuses: paymentStatuses.map(s => s._id).filter(Boolean),
@@ -386,12 +391,11 @@ const getRevenueTable = asyncHandler(async (req, res) => {
   if (filters.paymentMethod) paymentMatch.method = filters.paymentMethod;
 
   const extra = [];
-  if (filters.branchCode || filters.trainerId) {
+  if (filters.branchCode) {
     extra.push(
       { $lookup: { from: "members", localField: "member", foreignField: "_id", as: "_member" } },
       { $unwind: "$_member" },
-      ...(filters.branchCode ? [{ $match: { "_member.branchCode": filters.branchCode } }] : []),
-      ...(filters.trainerId ? [{ $match: { "_member.trainer": new mongoose.Types.ObjectId(filters.trainerId) } }] : [])
+      ...(filters.branchCode ? [{ $match: { "_member.branchCode": filters.branchCode } }] : [])
     );
   }
 
@@ -424,7 +428,6 @@ const getMembershipTable = asyncHandler(async (req, res) => {
   const filters = filterOptionsQuery(req);
   const memberMatch = { gymId };
   if (filters.branchCode) memberMatch.branchCode = filters.branchCode;
-  if (filters.trainerId) memberMatch.trainer = new mongoose.Types.ObjectId(filters.trainerId);
   if (filters.memberStatus) memberMatch.status = filters.memberStatus;
   if (filters.planId) memberMatch.currentPlan = new mongoose.Types.ObjectId(filters.planId);
 
@@ -507,7 +510,16 @@ const exportReport = asyncHandler(async (req, res) => {
       if (filters.planId) paymentMatch.plan = new mongoose.Types.ObjectId(filters.planId);
       if (filters.paymentStatus) paymentMatch.status = filters.paymentStatus;
       if (filters.paymentMethod) paymentMatch.method = filters.paymentMethod;
+      const paymentExtra = [];
+      if (filters.branchCode) {
+        paymentExtra.push(
+          { $lookup: { from: "members", localField: "member", foreignField: "_id", as: "_member" } },
+          { $unwind: "$_member" },
+          { $match: { "_member.branchCode": filters.branchCode } }
+        );
+      }
       const rows = await Payment.aggregate([
+        ...paymentExtra,
         { $match: paymentMatch },
         { $group: { _id: groupId, total: { $sum: "$amount" }, count: { $sum: 1 } } },
         { $sort: { _id: 1 } },
@@ -525,7 +537,6 @@ const exportReport = asyncHandler(async (req, res) => {
       const filters = filterOptionsQuery(req);
       const memberMatch = { gymId: req.gymId };
       if (filters.branchCode) memberMatch.branchCode = filters.branchCode;
-      if (filters.trainerId) memberMatch.trainer = new mongoose.Types.ObjectId(filters.trainerId);
       if (filters.memberStatus) memberMatch.status = filters.memberStatus;
       if (filters.planId) memberMatch.currentPlan = new mongoose.Types.ObjectId(filters.planId);
       const byPlan = await Member.aggregate([
@@ -562,12 +573,11 @@ const exportReport = asyncHandler(async (req, res) => {
     if (filters.paymentStatus) paymentMatch.status = filters.paymentStatus;
     if (filters.paymentMethod) paymentMatch.method = filters.paymentMethod;
     const paymentExtra = [];
-    if (filters.branchCode || filters.trainerId) {
+    if (filters.branchCode) {
       paymentExtra.push(
         { $lookup: { from: "members", localField: "member", foreignField: "_id", as: "_member" } },
         { $unwind: "$_member" },
-        ...(filters.branchCode ? [{ $match: { "_member.branchCode": filters.branchCode } }] : []),
-        ...(filters.trainerId ? [{ $match: { "_member.trainer": new mongoose.Types.ObjectId(filters.trainerId) } }] : [])
+        ...(filters.branchCode ? [{ $match: { "_member.branchCode": filters.branchCode } }] : [])
       );
     }
     const [payments, totalMembers, activeMembers, attendanceCount] = await Promise.all([
@@ -581,9 +591,24 @@ const exportReport = asyncHandler(async (req, res) => {
         { $lookup: { from: "users", localField: "member.user", foreignField: "_id", as: "memberUser" } },
         { $unwind: { path: "$memberUser", preserveNullAndEmptyArrays: true } },
       ]),
-      Member.countDocuments({ gymId: req.gymId, ...(filters.branchCode ? { branchCode: filters.branchCode } : {}), ...(filters.trainerId ? { trainer: new mongoose.Types.ObjectId(filters.trainerId) } : {}), ...(filters.memberStatus ? { status: filters.memberStatus } : {}), status: filters.memberStatus || { $in: ["active", "pending"] } }),
-      Member.countDocuments({ gymId: req.gymId, ...(filters.branchCode ? { branchCode: filters.branchCode } : {}), ...(filters.trainerId ? { trainer: new mongoose.Types.ObjectId(filters.trainerId) } : {}), ...(filters.memberStatus ? { status: filters.memberStatus } : {}), status: filters.memberStatus || { $in: ["active", "pending"] }, isActivePlan: true }),
-      Attendance.countDocuments({ gymId: req.gymId, checkIn: { $gte: start, $lte: end }, deletedAt: null }),
+      Member.countDocuments({ gymId: req.gymId, ...(filters.branchCode ? { branchCode: filters.branchCode } : {}), ...(filters.memberStatus ? { status: filters.memberStatus } : {}), status: filters.memberStatus || { $in: ["active", "pending"] } }),
+      Member.countDocuments({ gymId: req.gymId, ...(filters.branchCode ? { branchCode: filters.branchCode } : {}), ...(filters.memberStatus ? { status: filters.memberStatus } : {}), status: filters.memberStatus || { $in: ["active", "pending"] }, isActivePlan: true }),
+      (async () => {
+        const attMatch = { gymId: req.gymId, checkIn: { $gte: start, $lte: end }, deletedAt: null };
+        const attExtra = [];
+        if (filters.branchCode) {
+          attExtra.push(
+            { $lookup: { from: "members", localField: "member", foreignField: "_id", as: "_member" } },
+            { $unwind: "$_member" },
+          );
+        }
+        const attendanceRows = await Attendance.aggregate([
+          ...attExtra,
+          { $match: { ...attMatch, ...(filters.branchCode ? { "_member.branchCode": filters.branchCode } : {}) } },
+          { $count: "count" },
+        ]);
+        return attendanceRows.length ? attendanceRows[0].count : 0;
+      })(),
     ]);
     const overviewRows = [
       ["KPI", "Value"],
@@ -622,19 +647,44 @@ const exportReport = asyncHandler(async (req, res) => {
     if (filters.paymentStatus) paymentMatch.status = filters.paymentStatus;
     if (filters.paymentMethod) paymentMatch.method = filters.paymentMethod;
 
+    const paymentExtra = [];
+    if (filters.branchCode) {
+      paymentExtra.push(
+        { $lookup: { from: "members", localField: "member", foreignField: "_id", as: "_member" } },
+        { $unwind: "$_member" },
+      );
+    }
+    const scopedPaymentMatch = { ...paymentMatch, ...(filters.branchCode ? { "_member.branchCode": filters.branchCode } : {}) };
+
     const [revenue, members, attendance, paidCount, pendingCount, byPlan, byMethod] = await Promise.all([
-      Payment.aggregate([{ $match: paymentMatch }, { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } }]),
-      Member.countDocuments({ gymId: req.gymId }),
-      Attendance.countDocuments({ gymId: req.gymId, checkIn: { $gte: start, $lte: end }, deletedAt: null }),
-      Payment.countDocuments({ ...paymentMatch, status: "paid" }),
-      Payment.countDocuments({ ...paymentMatch, status: "pending" }),
+      Payment.aggregate([...paymentExtra, { $match: scopedPaymentMatch }, { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } }]),
+      Member.countDocuments({ gymId: req.gymId, ...(filters.branchCode ? { branchCode: filters.branchCode } : {}) }),
+      (async () => {
+        const attMatch = { gymId: req.gymId, checkIn: { $gte: start, $lte: end }, deletedAt: null };
+        const attExtra = [];
+        if (filters.branchCode) {
+          attExtra.push(
+            { $lookup: { from: "members", localField: "member", foreignField: "_id", as: "_member" } },
+            { $unwind: "$_member" },
+          );
+        }
+        const attRows = await Attendance.aggregate([
+          ...attExtra,
+          { $match: { ...attMatch, ...(filters.branchCode ? { "_member.branchCode": filters.branchCode } : {}) } },
+          { $count: "count" },
+        ]);
+        return attRows.length ? attRows[0].count : 0;
+      })(),
+      Payment.aggregate([...paymentExtra, { $match: { ...scopedPaymentMatch, status: "paid" } }, { $count: "count" }]).then(r => r.length ? r[0].count : 0),
+      Payment.aggregate([...paymentExtra, { $match: { ...scopedPaymentMatch, status: "pending" } }, { $count: "count" }]).then(r => r.length ? r[0].count : 0),
       Payment.aggregate([
-        { $match: paymentMatch },
+        ...paymentExtra,
+        { $match: scopedPaymentMatch },
         { $group: { _id: "$plan", total: { $sum: "$amount" } } },
         { $lookup: { from: "plans", localField: "_id", foreignField: "_id", as: "plan" } },
         { $project: { total: 1, name: { $arrayElemAt: ["$plan.name", 0] } } },
       ]),
-      Payment.aggregate([{ $match: paymentMatch }, { $group: { _id: "$method", total: { $sum: "$amount" } } }]),
+      Payment.aggregate([...paymentExtra, { $match: scopedPaymentMatch }, { $group: { _id: "$method", total: { $sum: "$amount" } } }]),
     ]);
 
     const totalRevenue = revenue[0]?.total || 0;

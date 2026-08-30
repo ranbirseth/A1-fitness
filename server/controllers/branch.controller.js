@@ -7,6 +7,7 @@ const Attendance = require("../models/attendance.model");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { sendResponse } = require("../utils/response");
 const { getPagination } = require("../utils/pagination");
+const { renameBranchCode } = require("../services/branchRename.service");
 
 const branchFilter = req => {
   const filter = { gymId: req.gymId };
@@ -51,10 +52,36 @@ const createBranch = asyncHandler(async (req, res) => {
 });
 
 const updateBranch = asyncHandler(async (req, res) => {
-  const updateData = req.user.role !== "superadmin" ? (({ branchCode, ...rest }) => rest)(req.body) : req.body;
-  const branch = await Branch.findOneAndUpdate({ _id: req.params.id, ...branchFilter(req) }, updateData, { new: true, runValidators: true }).populate("manager", "name email phone");
+  const branch = await Branch.findOne({ _id: req.params.id, ...branchFilter(req) });
   if (!branch) throw Object.assign(new Error("Branch not found"), { statusCode: 404 });
-  sendResponse(res, { message: "Branch updated", data: branch });
+
+  let updated;
+  if (req.user.role === "superadmin") {
+    const { branchCode, ...rest } = req.body;
+    if (branchCode !== undefined) {
+      // Only Super Admin may rename branchCode. The cascade runs atomically.
+      updated = (
+        await renameBranchCode({
+          gymId: req.gymId,
+          branchId: branch._id,
+          oldCode: branch.branchCode || "MAIN",
+          newCode: branchCode,
+          branchPatch: rest
+        })
+      ).branch;
+    } else {
+      updated = await Branch.findOneAndUpdate({ _id: branch._id, gymId: req.gymId }, rest, { new: true, runValidators: true });
+    }
+  } else {
+    // Non-superadmins (Branch Admin): branchCode is stripped so an attempt to
+    // change it is safely prevented server-side while other fields still edit.
+    const { branchCode, ...rest } = req.body;
+    updated = await Branch.findOneAndUpdate({ _id: branch._id, gymId: req.gymId }, rest, { new: true, runValidators: true });
+  }
+  if (!updated) throw Object.assign(new Error("Branch not found"), { statusCode: 404 });
+
+  const populated = await Branch.findById(updated._id).populate("manager", "name email phone");
+  sendResponse(res, { message: "Branch updated", data: populated });
 });
 
 const deleteBranch = asyncHandler(async (req, res) => {

@@ -1,9 +1,10 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useEffect, useState } from 'react';
-import { Dumbbell, Utensils, Zap, Clock, Plus, Trash2, Search, UserPlus, AlertTriangle, CreditCard, FileText, CalendarCheck, TrendingUp, Award, Download, RefreshCw, UserSquare2, Mail, Phone } from 'lucide-react';
-import { getWorkoutTemplates, createWorkoutTemplate, deleteWorkoutPlan, assignWorkoutToMember, getMyWorkout } from '../features/workouts/workouts.api';
-import { getDietTemplates, createDietTemplate, deleteDietPlan, assignDietToMember, getMyDiet } from '../features/diets/diets.api';
+import { Dumbbell, Utensils, Zap, Clock, Plus, Trash2, Search, UserPlus, AlertTriangle, CreditCard, FileText, CalendarCheck, TrendingUp, Award, Download, RefreshCw, UserSquare2, Mail, Phone, Edit2, Building2, X } from 'lucide-react';
+import { getWorkoutTemplates, createWorkoutTemplate, updateWorkoutTemplate, deleteWorkoutPlan, applyWorkoutTemplateToBranch, removeWorkoutTemplateFromBranch, assignWorkoutToMember, getMyWorkout } from '../features/workouts/workouts.api';
+import { getDietTemplates, createDietTemplate, updateDietTemplate, deleteDietPlan, applyDietTemplateToBranch, removeDietTemplateFromBranch, assignDietToMember, getMyDiet } from '../features/diets/diets.api';
 import { getMembers, getMyProfile } from '../features/members/members.api';
+import { getBranches } from '../features/branches/branches.api';
 import { getPayments } from '../features/payments/payments.api';
 import { markAttendance, getMyAttendance, getTodayAttendanceStatus, getMyAttendanceStats, exportMyAttendance } from '../features/attendance/attendance.api';
 import { useAuthStore } from '../store/auth.store';
@@ -231,44 +232,67 @@ const MemberView = () => {
                                         return (_jsxs("tr", { children: [_jsx("td", { style: { fontWeight: 600 }, children: new Date(record.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }), _jsx("td", { children: checkInDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) }), _jsx("td", { children: checkOutDate ? checkOutDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '-' }), _jsx("td", { children: durationStr }), _jsx("td", { children: getStatusBadge(record.status) })] }, record._id));
                                     }) })] }) }))] }))] }));
 };
+const DEFAULT_WORKOUT_FORM = {
+    name: '',
+    goal: 'General Fitness',
+    difficulty: 'Beginner',
+    days: [{ dayName: 'Day 1', exercises: [{ name: '', sets: 3, reps: '12', rest: '60s' }] }]
+};
+const DEFAULT_DIET_FORM = {
+    name: '',
+    goal: 'Maintenance',
+    calories: 2000,
+    meals: {
+        breakfast: [{ foodName: '', quantity: '', calories: 0 }],
+        lunch: [{ foodName: '', quantity: '', calories: 0 }],
+        dinner: [{ foodName: '', quantity: '', calories: 0 }],
+        snacks: [{ foodName: '', quantity: '', calories: 0 }]
+    }
+};
 const WorkoutsPage = () => {
     const { user } = useAuthStore();
     const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
     const isTrainer = user?.role === 'trainer';
+    const isSuperAdmin = user?.role === 'superadmin';
+    const adminBranchCode = user?.branchCode || 'MAIN';
+    const [branches, setBranches] = useState([]);
+    const [selectedBranchCode, setSelectedBranchCode] = useState('');
+    const effectiveBranchCode = isSuperAdmin ? selectedBranchCode : adminBranchCode;
     const [activeTab, setActiveTab] = useState('workouts');
     const [workoutTemplates, setWorkoutTemplates] = useState([]);
     const [dietTemplates, setDietTemplates] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isWorkoutModalOpen, setIsWorkoutModalOpen] = useState(false);
     const [isDietModalOpen, setIsDietModalOpen] = useState(false);
+    const [editingWorkoutId, setEditingWorkoutId] = useState(null);
+    const [editingDietId, setEditingDietId] = useState(null);
+    const [selectedCreateBranches, setSelectedCreateBranches] = useState([]);
+    const [isApplyBranchModalOpen, setIsApplyBranchModalOpen] = useState(false);
+    const [selectedTemplateForBranch, setSelectedTemplateForBranch] = useState(null);
+    const [selectedApplyBranchCode, setSelectedApplyBranchCode] = useState('');
+    const [isApplying, setIsApplying] = useState(false);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [selectedTemplateForAssign, setSelectedTemplateForAssign] = useState(null);
     const [members, setMembers] = useState([]);
     const [memberSearch, setMemberSearch] = useState('');
     const [isAssigning, setIsAssigning] = useState(false);
-    const [workoutForm, setWorkoutForm] = useState({
-        name: '',
-        goal: 'General Fitness',
-        difficulty: 'Beginner',
-        days: [{ dayName: 'Day 1', exercises: [{ name: '', sets: 3, reps: '12', rest: '60s' }] }]
-    });
-    const [dietForm, setDietForm] = useState({
-        name: '',
-        goal: 'Maintenance',
-        calories: 2000,
-        meals: {
-            breakfast: [{ foodName: '', quantity: '', calories: 0 }],
-            lunch: [{ foodName: '', quantity: '', calories: 0 }],
-            dinner: [{ foodName: '', quantity: '', calories: 0 }],
-            snacks: [{ foodName: '', quantity: '', calories: 0 }]
+    const [workoutForm, setWorkoutForm] = useState(DEFAULT_WORKOUT_FORM);
+    const [dietForm, setDietForm] = useState(DEFAULT_DIET_FORM);
+    useEffect(() => {
+        if (isSuperAdmin) {
+            getBranches({ limit: 100 }).then(res => {
+                const items = res.data?.data?.items || [];
+                setBranches(items);
+            }).catch(() => { });
         }
-    });
+    }, [isSuperAdmin]);
     const fetchData = async () => {
         setLoading(true);
         try {
+            const branchQuery = isSuperAdmin ? (selectedBranchCode || undefined) : undefined;
             const [wRes, dRes] = await Promise.allSettled([
-                getWorkoutTemplates(),
-                getDietTemplates()
+                getWorkoutTemplates(branchQuery),
+                getDietTemplates(branchQuery)
             ]);
             if (wRes.status === 'fulfilled') {
                 setWorkoutTemplates(wRes.value.data?.data || []);
@@ -296,51 +320,100 @@ const WorkoutsPage = () => {
         if (isAdmin || isTrainer) {
             fetchData();
         }
-    }, [isAdmin, isTrainer]);
+    }, [isAdmin, isTrainer, isSuperAdmin, selectedBranchCode]);
     useEffect(() => {
         if (isAssignModalOpen) {
-            getMembers({ search: memberSearch, limit: 10 }).then(res => {
+            getMembers({ search: memberSearch, limit: 10, branchCode: effectiveBranchCode }).then(res => {
                 setMembers(res.data.data.items);
             });
         }
-    }, [isAssignModalOpen, memberSearch]);
+    }, [isAssignModalOpen, memberSearch, isSuperAdmin, selectedBranchCode, effectiveBranchCode]);
+    const toggleCreateBranch = (code, checked) => {
+        setSelectedCreateBranches(prev => checked ? [...prev, code] : prev.filter(c => c !== code));
+    };
+    const handleOpenCreateWorkout = () => {
+        setEditingWorkoutId(null);
+        setWorkoutForm(DEFAULT_WORKOUT_FORM);
+        setSelectedCreateBranches(selectedBranchCode ? [selectedBranchCode] : []);
+        setIsWorkoutModalOpen(true);
+    };
+    const handleOpenEditWorkout = (t) => {
+        setEditingWorkoutId(t._id);
+        setWorkoutForm({
+            name: t.name || '',
+            goal: t.goal || 'General Fitness',
+            difficulty: t.difficulty || 'Beginner',
+            days: t.days?.length ? t.days : DEFAULT_WORKOUT_FORM.days
+        });
+        setSelectedCreateBranches([]);
+        setIsWorkoutModalOpen(true);
+    };
+    const handleOpenCreateDiet = () => {
+        setEditingDietId(null);
+        setDietForm(DEFAULT_DIET_FORM);
+        setSelectedCreateBranches(selectedBranchCode ? [selectedBranchCode] : []);
+        setIsDietModalOpen(true);
+    };
+    const handleOpenEditDiet = (t) => {
+        setEditingDietId(t._id);
+        setDietForm({
+            name: t.name || '',
+            goal: t.goal || 'Maintenance',
+            calories: t.calories ?? 2000,
+            meals: t.meals && t.meals.breakfast ? t.meals : DEFAULT_DIET_FORM.meals
+        });
+        setSelectedCreateBranches([]);
+        setIsDietModalOpen(true);
+    };
     const handleCreateWorkout = async (e) => {
         e.preventDefault();
+        if (!editingWorkoutId && selectedCreateBranches.length === 0) {
+            alert("Please select at least one branch.");
+            return;
+        }
         try {
-            await createWorkoutTemplate(workoutForm);
+            const payload = { ...workoutForm, branches: selectedCreateBranches };
+            if (editingWorkoutId) {
+                await updateWorkoutTemplate(editingWorkoutId, { name: workoutForm.name, goal: workoutForm.goal, difficulty: workoutForm.difficulty, days: workoutForm.days });
+            }
+            else {
+                await createWorkoutTemplate(payload);
+            }
             setIsWorkoutModalOpen(false);
-            setWorkoutForm({
-                name: '',
-                goal: 'General Fitness',
-                difficulty: 'Beginner',
-                days: [{ dayName: 'Day 1', exercises: [{ name: '', sets: 3, reps: '12', rest: '60s' }] }]
-            });
+            setEditingWorkoutId(null);
+            setWorkoutForm(DEFAULT_WORKOUT_FORM);
             fetchData();
         }
         catch (error) {
-            alert("Failed to create workout template");
+            alert("Failed to save workout template");
         }
     };
     const handleCreateDiet = async (e) => {
         e.preventDefault();
+        if (!editingDietId && selectedCreateBranches.length === 0) {
+            alert("Please select at least one branch.");
+            return;
+        }
+        const { errors, meals } = validateDietForm(dietForm);
+        if (errors.length) {
+            alert(errors.join('\n'));
+            return;
+        }
         try {
-            await createDietTemplate(dietForm);
+            const payload = { ...dietForm, meals, branches: editingDietId ? undefined : selectedCreateBranches };
+            if (editingDietId) {
+                await updateDietTemplate(editingDietId, { name: dietForm.name, goal: dietForm.goal, calories: dietForm.calories, meals });
+            }
+            else {
+                await createDietTemplate(payload);
+            }
             setIsDietModalOpen(false);
-            setDietForm({
-                name: '',
-                goal: 'Maintenance',
-                calories: 2000,
-                meals: {
-                    breakfast: [{ foodName: '', quantity: '', calories: 0 }],
-                    lunch: [{ foodName: '', quantity: '', calories: 0 }],
-                    dinner: [{ foodName: '', quantity: '', calories: 0 }],
-                    snacks: [{ foodName: '', quantity: '', calories: 0 }]
-                }
-            });
+            setEditingDietId(null);
+            setDietForm(DEFAULT_DIET_FORM);
             fetchData();
         }
         catch (error) {
-            alert("Failed to create diet template");
+            alert(error.response?.data?.message || "Failed to save diet template");
         }
     };
     const handleAssign = async (memberId) => {
@@ -354,14 +427,72 @@ const WorkoutsPage = () => {
             else {
                 await assignDietToMember({ memberId, templateId: selectedTemplateForAssign.id });
             }
-            alert("Plan assigned successfully!");
+            alert("Template assigned successfully!");
             setIsAssignModalOpen(false);
         }
         catch (error) {
-            alert("Failed to assign plan");
+            alert("Failed to assign template");
         }
         finally {
             setIsAssigning(false);
+        }
+    };
+    const handleOpenApplyBranch = (t, type) => {
+        setSelectedTemplateForBranch({ id: t._id, type, name: t.name });
+        setSelectedApplyBranchCode('');
+        setIsApplyBranchModalOpen(true);
+    };
+    const handleApplyToBranch = async () => {
+        if (!selectedTemplateForBranch || !selectedApplyBranchCode)
+            return;
+        setIsApplying(true);
+        try {
+            if (selectedTemplateForBranch.type === 'workout') {
+                await applyWorkoutTemplateToBranch(selectedTemplateForBranch.id, selectedApplyBranchCode);
+            }
+            else {
+                await applyDietTemplateToBranch(selectedTemplateForBranch.id, selectedApplyBranchCode);
+            }
+            setIsApplyBranchModalOpen(false);
+            fetchData();
+        }
+        catch (error) {
+            alert(error.response?.data?.message || 'Failed to apply template to branch');
+        }
+        finally {
+            setIsApplying(false);
+        }
+    };
+    const handleRemoveFromBranch = async (t, type, branchCode) => {
+        if (!window.confirm(`Remove "${t.name}" from branch ${branchCode}?`))
+            return;
+        try {
+            if (type === 'workout') {
+                await removeWorkoutTemplateFromBranch(t._id, branchCode);
+            }
+            else {
+                await removeDietTemplateFromBranch(t._id, branchCode);
+            }
+            fetchData();
+        }
+        catch (error) {
+            alert(error.response?.data?.message || 'Failed to remove template from branch');
+        }
+    };
+    const handleDeleteTemplate = async (t, type) => {
+        if (!window.confirm(`Delete the template "${t.name}"? This removes it for ALL branches.`))
+            return;
+        try {
+            if (type === 'workout') {
+                await deleteWorkoutPlan(t._id);
+            }
+            else {
+                await deleteDietPlan(t._id);
+            }
+            fetchData();
+        }
+        catch (error) {
+            alert(error.response?.data?.message || 'Failed to delete template');
         }
     };
     const addWorkoutDay = () => {
@@ -384,19 +515,69 @@ const WorkoutsPage = () => {
             }
         });
     };
+    const validateDietForm = (form) => {
+        const errors = [];
+        if (!form.name.trim())
+            errors.push('Plan name is required.');
+        if (!Number.isFinite(Number(form.calories)))
+            errors.push('Calories must be a valid number.');
+        const sanitized = {};
+        let hasAnyMeal = false;
+        const labels = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snacks: 'Snacks' };
+        Object.keys(form.meals).forEach((meal) => {
+            const kept = [];
+            form.meals[meal].forEach((item) => {
+                const fn = (item.foodName || '').trim();
+                const qty = (item.quantity || '').trim();
+                if (!fn && !qty && (item.calories === 0 || item.calories === undefined || item.calories === null)) {
+                    return; // completely empty placeholder row -> drop
+                }
+                if (!fn && qty)
+                    errors.push(`${labels[meal]}: please enter a food name.`);
+                if (fn && !qty)
+                    errors.push(`${labels[meal]} (${fn}): please enter a quantity.`);
+                if (fn && qty && !Number.isFinite(Number(item.calories)))
+                    errors.push(`${labels[meal]} (${fn}): calories must be a valid number.`);
+                kept.push({ foodName: fn, quantity: qty, calories: Number.isFinite(Number(item.calories)) ? Number(item.calories) : 0 });
+            });
+            sanitized[meal] = kept;
+            if (kept.length)
+                hasAnyMeal = true;
+        });
+        if (!editingDietId && !hasAnyMeal)
+            errors.push('Please add at least one meal item with food name and quantity.');
+        return { errors, meals: sanitized };
+    };
     if (!user) {
         return _jsx("div", { className: "loading-state", children: _jsx("div", { className: "spinner" }) });
     }
     if (user.role === 'member') {
         return _jsx(MemberView, {});
     }
-    return (_jsxs("div", { children: [_jsx("div", { className: "page-header", style: { marginBottom: '2rem' }, children: _jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }, children: [_jsxs("div", { children: [_jsx("h1", { children: "Workout & Diet Library" }), _jsx("p", { className: "text-muted", children: "Manage templates and assign plans to members." })] }), _jsx("div", { style: { display: 'flex', gap: '1rem' }, children: activeTab === 'workouts' ? ((isAdmin || isTrainer) && _jsxs("button", { className: "btn btn-primary", onClick: () => setIsWorkoutModalOpen(true), children: [_jsx(Plus, { size: 18 }), " Create Workout"] })) : ((isAdmin || isTrainer) && _jsxs("button", { className: "btn btn-primary", onClick: () => setIsDietModalOpen(true), children: [_jsx(Plus, { size: 18 }), " Create Diet"] })) })] }) }), _jsxs("div", { className: "glass-panel", style: { padding: '0.5rem', marginBottom: '2rem', display: 'inline-flex', gap: '0.5rem' }, children: [_jsxs("button", { className: `btn ${activeTab === 'workouts' ? 'btn-primary' : 'btn-secondary'}`, onClick: () => setActiveTab('workouts'), children: [_jsx(Dumbbell, { size: 18 }), " Workouts"] }), _jsxs("button", { className: `btn ${activeTab === 'diets' ? 'btn-primary' : 'btn-secondary'}`, onClick: () => setActiveTab('diets'), children: [_jsx(Utensils, { size: 18 }), " Diet Plans"] })] }), loading ? (_jsx("div", { className: "loading-state", children: _jsx("div", { className: "spinner" }) })) : (_jsx("div", { className: "grid-cards", children: activeTab === 'workouts' ? (workoutTemplates.length > 0 ? (workoutTemplates.map((t) => (_jsxs("div", { className: "glass-card", style: { padding: '1.5rem', display: 'flex', flexDirection: 'column', height: 'fit-content', minHeight: '280px' }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', alignItems: 'flex-start', gap: '1rem' }, children: [_jsx("h3", { style: { fontSize: '1.1rem', color: 'var(--clr-text-main)', wordBreak: 'break-word' }, children: t.name }), _jsx("span", { className: "status-badge active", style: { fontSize: '0.65rem', padding: '0.2rem 0.5rem', flexShrink: 0 }, children: t.difficulty })] }), _jsxs("p", { className: "text-muted", style: { fontSize: '0.8rem', marginBottom: '1rem' }, children: ["Goal: ", t.goal] }), _jsxs("div", { style: { flex: 1, marginBottom: '1.5rem' }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--clr-primary)', fontSize: '0.85rem', marginBottom: '0.75rem', fontWeight: '600' }, children: [_jsx(Zap, { size: 14 }), " ", t.days?.length, " Days Training"] }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '200px', overflowY: 'auto', paddingRight: '8px' }, children: t.days?.map((day, idx) => (_jsxs("div", { style: { borderLeft: '2px solid var(--clr-primary)', paddingLeft: '0.75rem' }, children: [_jsx("p", { style: { fontWeight: '700', color: 'var(--clr-text-main)', fontSize: '0.8rem', marginBottom: '0.25rem' }, children: day.dayName }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.2rem' }, children: day.exercises?.map((ex, exIdx) => (_jsxs("div", { style: { fontSize: '0.75rem', color: 'var(--clr-text-muted)', display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }, children: [_jsx("span", { style: { wordBreak: 'break-word' }, children: ex.name }), _jsxs("span", { style: { fontWeight: '600', flexShrink: 0 }, children: [ex.sets, "\u00D7", ex.reps] })] }, exIdx))) })] }, idx))) })] }), _jsxs("div", { style: { display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)' }, children: [_jsxs("button", { className: "btn btn-secondary flex-1", style: { fontSize: '0.85rem', padding: '0.5rem' }, onClick: () => {
-                                        setSelectedTemplateForAssign({ id: t._id, type: 'workout', name: t.name });
-                                        setIsAssignModalOpen(true);
-                                    }, children: [_jsx(UserPlus, { size: 16 }), " Assign"] }), (isAdmin || isTrainer) && (_jsx("button", { className: "btn btn-icon danger", style: { width: '36px', height: '36px' }, onClick: () => deleteWorkoutPlan(t._id).then(fetchData), children: _jsx(Trash2, { size: 16 }) }))] })] }, t._id)))) : (_jsxs("div", { className: "glass-panel", style: { gridColumn: '1 / -1', padding: '3rem', textAlign: 'center' }, children: [_jsx(Dumbbell, { size: 48, className: "text-muted", style: { margin: '0 auto 1rem', opacity: 0.5 } }), _jsx("p", { className: "text-muted", children: "No workout templates found. Create your first one!" })] }))) : (dietTemplates.length > 0 ? (dietTemplates.map((t) => (_jsxs("div", { className: "glass-card", style: { padding: '1.5rem', display: 'flex', flexDirection: 'column', height: 'fit-content', minHeight: '280px' }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', alignItems: 'flex-start', gap: '1rem' }, children: [_jsx("h3", { style: { fontSize: '1.1rem', color: 'var(--clr-text-main)', wordBreak: 'break-word' }, children: t.name }), _jsx("span", { className: "status-badge active", style: { fontSize: '0.65rem', padding: '0.2rem 0.5rem', flexShrink: 0 }, children: t.goal })] }), _jsxs("p", { className: "text-muted", style: { fontSize: '0.8rem', marginBottom: '1rem' }, children: ["Target: ", t.calories, " kcal"] }), _jsxs("div", { style: { flex: 1, marginBottom: '1.5rem' }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--clr-success)', fontSize: '0.85rem', marginBottom: '0.75rem', fontWeight: '600' }, children: [_jsx(Utensils, { size: 14 }), " Meal Breakdown"] }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '200px', overflowY: 'auto', paddingRight: '8px' }, children: ['breakfast', 'lunch', 'dinner', 'snacks'].map((meal) => (t.meals?.[meal]?.length > 0 && (_jsxs("div", { style: { borderLeft: '2px solid var(--clr-success)', paddingLeft: '0.75rem' }, children: [_jsx("p", { style: { fontWeight: '700', color: 'var(--clr-text-main)', fontSize: '0.8rem', marginBottom: '0.25rem', textTransform: 'capitalize' }, children: meal }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.2rem' }, children: t.meals[meal].map((item, itemIdx) => (_jsxs("div", { style: { fontSize: '0.75rem', color: 'var(--clr-text-muted)', display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }, children: [_jsx("span", { style: { wordBreak: 'break-word' }, children: item.foodName }), _jsx("span", { style: { flexShrink: 0 }, children: item.quantity })] }, itemIdx))) })] }, meal)))) })] }), _jsxs("div", { style: { display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)' }, children: [_jsxs("button", { className: "btn btn-secondary flex-1", style: { fontSize: '0.85rem', padding: '0.5rem' }, onClick: () => {
-                                        setSelectedTemplateForAssign({ id: t._id, type: 'diet', name: t.name });
-                                        setIsAssignModalOpen(true);
-                                    }, children: [_jsx(UserPlus, { size: 16 }), " Assign"] }), (isAdmin || isTrainer) && (_jsx("button", { className: "btn btn-icon danger", style: { width: '36px', height: '36px' }, onClick: () => deleteDietPlan(t._id).then(fetchData), children: _jsx(Trash2, { size: 16 }) }))] })] }, t._id)))) : (_jsxs("div", { className: "glass-panel", style: { gridColumn: '1 / -1', padding: '3rem', textAlign: 'center' }, children: [_jsx(Utensils, { size: 48, className: "text-muted", style: { margin: '0 auto 1rem', opacity: 0.5 } }), _jsx("p", { className: "text-muted", children: "No diet plans found. Create your first one!" })] }))) })), _jsx(Modal, { isOpen: isWorkoutModalOpen, onClose: () => setIsWorkoutModalOpen(false), title: "Create Workout Template", children: _jsxs("form", { onSubmit: handleCreateWorkout, style: { display: 'flex', flexDirection: 'column', height: '100%' }, children: [_jsxs("div", { style: { flex: 1 }, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Plan Name" }), _jsx("input", { className: "form-input", required: true, value: workoutForm.name, onChange: e => setWorkoutForm({ ...workoutForm, name: e.target.value }), placeholder: "e.g. 5-Day Muscle Builder" })] }), _jsxs("div", { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '1rem' }, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Goal" }), _jsxs("select", { className: "form-input", value: workoutForm.goal, onChange: e => setWorkoutForm({ ...workoutForm, goal: e.target.value }), children: [_jsx("option", { children: "Fat Loss" }), _jsx("option", { children: "Muscle Gain" }), _jsx("option", { children: "Strength" }), _jsx("option", { children: "General Fitness" })] })] }), _jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Difficulty" }), _jsxs("select", { className: "form-input", value: workoutForm.difficulty, onChange: e => setWorkoutForm({ ...workoutForm, difficulty: e.target.value }), children: [_jsx("option", { children: "Beginner" }), _jsx("option", { children: "Intermediate" }), _jsx("option", { children: "Advanced" })] })] })] }), _jsx("div", { style: { paddingRight: '0.5rem' }, children: workoutForm.days.map((day, dIdx) => (_jsxs("div", { className: "glass-panel", style: { padding: '1rem', marginBottom: '1rem' }, children: [_jsx("input", { className: "form-input", style: { fontWeight: 700, marginBottom: '1rem', background: 'transparent', border: 'none', borderBottom: '1px solid var(--clr-glass-border)', borderRadius: 0 }, value: day.dayName, onChange: e => {
+    const activeBranches = branches.filter(b => b.status === 'active');
+    const renderBranchesApplied = (t, type) => (_jsxs("div", { style: { marginBottom: '1rem', textAlign: 'left' }, children: [_jsx("p", { className: "text-muted", style: { fontSize: '0.7rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }, children: "Applied Branches" }), (t.appliedBranches || []).length > 0 ? (_jsx("div", { style: { display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }, children: (t.appliedBranches || []).sort().map((bc) => (_jsxs("span", { style: {
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        fontSize: '0.75rem',
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: '12px',
+                        background: 'rgba(139, 92, 246, 0.12)',
+                        color: 'var(--clr-primary)'
+                    }, children: [_jsx(Building2, { size: 10 }), " ", bc, isSuperAdmin && (_jsx("span", { onClick: (e) => { e.stopPropagation(); handleRemoveFromBranch(t, type, bc); }, title: `Remove from ${bc}`, style: { cursor: 'pointer', display: 'inline-flex' }, children: _jsx(X, { size: 12, style: { opacity: 0.7, marginLeft: '0.15rem' } }) }))] }, bc))) })) : (_jsx("p", { className: "text-muted", style: { fontSize: '0.8rem', fontStyle: 'italic' }, children: "None" }))] }));
+    return (_jsxs("div", { children: [_jsx("div", { className: "page-header", style: { marginBottom: '2rem' }, children: _jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }, children: [_jsxs("div", { children: [_jsx("h1", { children: "Workout & Diet Library" }), _jsx("p", { className: "text-muted", children: isSuperAdmin
+                                        ? 'Create reusable templates once, then apply them to any branch.'
+                                        : 'Use the templates Super Admin has applied to your branch.' })] }), _jsx("div", { style: { display: 'flex', gap: '1rem' }, children: activeTab === 'workouts' ? (isSuperAdmin && _jsxs("button", { className: "btn btn-primary", onClick: handleOpenCreateWorkout, children: [_jsx(Plus, { size: 18 }), " Create Workout"] })) : (isSuperAdmin && _jsxs("button", { className: "btn btn-primary", onClick: handleOpenCreateDiet, children: [_jsx(Plus, { size: 18 }), " Create Diet"] })) })] }) }), _jsxs("div", { className: "glass-panel", style: { padding: '0.5rem', marginBottom: '2rem', display: 'inline-flex', gap: '0.5rem' }, children: [_jsxs("button", { className: `btn ${activeTab === 'workouts' ? 'btn-primary' : 'btn-secondary'}`, onClick: () => setActiveTab('workouts'), children: [_jsx(Dumbbell, { size: 18 }), " Workouts"] }), _jsxs("button", { className: `btn ${activeTab === 'diets' ? 'btn-primary' : 'btn-secondary'}`, onClick: () => setActiveTab('diets'), children: [_jsx(Utensils, { size: 18 }), " Diet Plans"] })] }), isSuperAdmin && (_jsxs("div", { className: "glass-panel", style: { padding: '1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }, children: [_jsx("label", { className: "form-label", style: { margin: 0, whiteSpace: 'nowrap' }, children: "Filter by Branch:" }), _jsxs("select", { className: "form-input", style: { maxWidth: '280px' }, value: selectedBranchCode, onChange: (e) => setSelectedBranchCode(e.target.value), children: [_jsx("option", { value: "", children: "All branches" }), branches.map((b) => (_jsxs("option", { value: b.branchCode, children: [b.name, " (", b.branchCode, ")"] }, b.branchCode)))] })] })), !isSuperAdmin && (isAdmin || isTrainer) && (_jsxs("div", { className: "glass-panel", style: { padding: '0.75rem 1rem', marginBottom: '1.5rem', background: 'rgba(139, 92, 246, 0.06)', border: '1px solid rgba(139, 92, 246, 0.2)', fontSize: '0.85rem' }, children: ["You can only see and use templates that Super Admin has applied to your branch (", adminBranchCode, ")."] })), loading ? (_jsx("div", { className: "loading-state", children: _jsx("div", { className: "spinner" }) })) : (_jsx("div", { className: "grid-cards", children: activeTab === 'workouts' ? (workoutTemplates.length > 0 ? (workoutTemplates.map((t) => (_jsxs("div", { className: "glass-card", style: { padding: '1.5rem', display: 'flex', flexDirection: 'column', height: 'fit-content', minHeight: '280px' }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', alignItems: 'flex-start', gap: '1rem' }, children: [_jsx("h3", { style: { fontSize: '1.1rem', color: 'var(--clr-text-main)', wordBreak: 'break-word' }, children: t.name }), _jsx("span", { className: "status-badge active", style: { fontSize: '0.65rem', padding: '0.2rem 0.5rem', flexShrink: 0 }, children: t.difficulty })] }), _jsxs("p", { className: "text-muted", style: { fontSize: '0.8rem', marginBottom: '1rem' }, children: ["Goal: ", t.goal] }), isSuperAdmin && renderBranchesApplied(t, 'workout'), _jsxs("div", { style: { flex: 1, marginBottom: '1.5rem' }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--clr-primary)', fontSize: '0.85rem', marginBottom: '0.75rem', fontWeight: '600' }, children: [_jsx(Zap, { size: 14 }), " ", t.days?.length, " Days Training"] }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '200px', overflowY: 'auto', paddingRight: '8px' }, children: t.days?.map((day, idx) => (_jsxs("div", { style: { borderLeft: '2px solid var(--clr-primary)', paddingLeft: '0.75rem' }, children: [_jsx("p", { style: { fontWeight: '700', color: 'var(--clr-text-main)', fontSize: '0.8rem', marginBottom: '0.25rem' }, children: day.dayName }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.2rem' }, children: day.exercises?.map((ex, exIdx) => (_jsxs("div", { style: { fontSize: '0.75rem', color: 'var(--clr-text-muted)', display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }, children: [_jsx("span", { style: { wordBreak: 'break-word' }, children: ex.name }), _jsxs("span", { style: { fontWeight: '600', flexShrink: 0 }, children: [ex.sets, "\u00D7", ex.reps] })] }, exIdx))) })] }, idx))) })] }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)' }, children: _jsxs("div", { style: { display: 'flex', gap: '0.5rem' }, children: [_jsxs("button", { className: "btn btn-secondary flex-1", style: { fontSize: '0.85rem', padding: '0.5rem' }, onClick: () => {
+                                            setSelectedTemplateForAssign({ id: t._id, type: 'workout', name: t.name });
+                                            setIsAssignModalOpen(true);
+                                        }, children: [_jsx(UserPlus, { size: 16 }), " Assign"] }), isSuperAdmin && (_jsxs(_Fragment, { children: [_jsx("button", { className: "btn btn-secondary", style: { fontSize: '0.85rem', padding: '0.5rem 0.75rem' }, title: "Apply to branch", onClick: () => handleOpenApplyBranch(t, 'workout'), children: _jsx(Building2, { size: 16 }) }), _jsx("button", { className: "btn btn-icon", style: { width: '36px', height: '36px' }, title: "Edit template", onClick: () => handleOpenEditWorkout(t), children: _jsx(Edit2, { size: 16 }) }), _jsx("button", { className: "btn btn-icon danger", style: { width: '36px', height: '36px' }, title: "Delete template", onClick: () => handleDeleteTemplate(t, 'workout'), children: _jsx(Trash2, { size: 16 }) })] }))] }) })] }, t._id)))) : (_jsxs("div", { className: "glass-panel", style: { gridColumn: '1 / -1', padding: '3rem', textAlign: 'center' }, children: [_jsx(Dumbbell, { size: 48, className: "text-muted", style: { margin: '0 auto 1rem', opacity: 0.5 } }), _jsx("p", { className: "text-muted", children: isSuperAdmin
+                                ? 'No workout templates found. Create your first one!'
+                                : 'No workout templates are available for your branch yet. Ask Super Admin to apply one.' })] }))) : (dietTemplates.length > 0 ? (dietTemplates.map((t) => (_jsxs("div", { className: "glass-card", style: { padding: '1.5rem', display: 'flex', flexDirection: 'column', height: 'fit-content', minHeight: '280px' }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', alignItems: 'flex-start', gap: '1rem' }, children: [_jsx("h3", { style: { fontSize: '1.1rem', color: 'var(--clr-text-main)', wordBreak: 'break-word' }, children: t.name }), _jsx("span", { className: "status-badge active", style: { fontSize: '0.65rem', padding: '0.2rem 0.5rem', flexShrink: 0 }, children: t.goal })] }), _jsxs("p", { className: "text-muted", style: { fontSize: '0.8rem', marginBottom: '1rem' }, children: ["Target: ", t.calories, " kcal"] }), isSuperAdmin && renderBranchesApplied(t, 'diet'), _jsxs("div", { style: { flex: 1, marginBottom: '1.5rem' }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--clr-success)', fontSize: '0.85rem', marginBottom: '0.75rem', fontWeight: '600' }, children: [_jsx(Utensils, { size: 14 }), " Meal Breakdown"] }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '200px', overflowY: 'auto', paddingRight: '8px' }, children: ['breakfast', 'lunch', 'dinner', 'snacks'].map((meal) => (t.meals?.[meal]?.length > 0 && (_jsxs("div", { style: { borderLeft: '2px solid var(--clr-success)', paddingLeft: '0.75rem' }, children: [_jsx("p", { style: { fontWeight: '700', color: 'var(--clr-text-main)', fontSize: '0.8rem', marginBottom: '0.25rem', textTransform: 'capitalize' }, children: meal }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.2rem' }, children: t.meals[meal].map((item, itemIdx) => (_jsxs("div", { style: { fontSize: '0.75rem', color: 'var(--clr-text-muted)', display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }, children: [_jsx("span", { style: { wordBreak: 'break-word' }, children: item.foodName }), _jsx("span", { style: { flexShrink: 0 }, children: item.quantity })] }, itemIdx))) })] }, meal)))) })] }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)' }, children: _jsxs("div", { style: { display: 'flex', gap: '0.5rem' }, children: [_jsxs("button", { className: "btn btn-secondary flex-1", style: { fontSize: '0.85rem', padding: '0.5rem' }, onClick: () => {
+                                            setSelectedTemplateForAssign({ id: t._id, type: 'diet', name: t.name });
+                                            setIsAssignModalOpen(true);
+                                        }, children: [_jsx(UserPlus, { size: 16 }), " Assign"] }), isSuperAdmin && (_jsxs(_Fragment, { children: [_jsx("button", { className: "btn btn-secondary", style: { fontSize: '0.85rem', padding: '0.5rem 0.75rem' }, title: "Apply to branch", onClick: () => handleOpenApplyBranch(t, 'diet'), children: _jsx(Building2, { size: 16 }) }), _jsx("button", { className: "btn btn-icon", style: { width: '36px', height: '36px' }, title: "Edit template", onClick: () => handleOpenEditDiet(t), children: _jsx(Edit2, { size: 16 }) }), _jsx("button", { className: "btn btn-icon danger", style: { width: '36px', height: '36px' }, title: "Delete template", onClick: () => handleDeleteTemplate(t, 'diet'), children: _jsx(Trash2, { size: 16 }) })] }))] }) })] }, t._id)))) : (_jsxs("div", { className: "glass-panel", style: { gridColumn: '1 / -1', padding: '3rem', textAlign: 'center' }, children: [_jsx(Utensils, { size: 48, className: "text-muted", style: { margin: '0 auto 1rem', opacity: 0.5 } }), _jsx("p", { className: "text-muted", children: isSuperAdmin
+                                ? 'No diet plans found. Create your first one!'
+                                : 'No diet plans are available for your branch yet. Ask Super Admin to apply one.' })] }))) })), _jsx(Modal, { isOpen: isWorkoutModalOpen, onClose: () => setIsWorkoutModalOpen(false), title: editingWorkoutId ? 'Edit Workout Template' : 'Create Workout Template', children: _jsxs("form", { onSubmit: handleCreateWorkout, style: { display: 'flex', flexDirection: 'column', height: '100%' }, children: [_jsxs("div", { style: { flex: 1 }, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Plan Name" }), _jsx("input", { className: "form-input", required: true, value: workoutForm.name, onChange: e => setWorkoutForm({ ...workoutForm, name: e.target.value }), placeholder: "e.g. 5-Day Muscle Builder" })] }), _jsxs("div", { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '1rem' }, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Goal" }), _jsxs("select", { className: "form-input", value: workoutForm.goal, onChange: e => setWorkoutForm({ ...workoutForm, goal: e.target.value }), children: [_jsx("option", { children: "Fat Loss" }), _jsx("option", { children: "Muscle Gain" }), _jsx("option", { children: "Strength" }), _jsx("option", { children: "General Fitness" })] })] }), _jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Difficulty" }), _jsxs("select", { className: "form-input", value: workoutForm.difficulty, onChange: e => setWorkoutForm({ ...workoutForm, difficulty: e.target.value }), children: [_jsx("option", { children: "Beginner" }), _jsx("option", { children: "Intermediate" }), _jsx("option", { children: "Advanced" })] })] })] }), !editingWorkoutId && (_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Apply to branches" }), _jsxs("div", { style: { display: 'flex', flexWrap: 'wrap', gap: '1rem' }, children: [activeBranches.map((b) => (_jsxs("label", { style: { display: 'inline-flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.85rem' }, children: [_jsx("input", { type: "checkbox", style: { width: '16px', height: '16px', cursor: 'pointer' }, checked: selectedCreateBranches.includes(b.branchCode), onChange: (e) => toggleCreateBranch(b.branchCode, e.target.checked) }), b.name, " (", b.branchCode, ")"] }, b.branchCode))), activeBranches.length === 0 && (_jsx("p", { className: "text-muted", style: { fontSize: '0.8rem' }, children: "No branches available." }))] })] })), _jsx("div", { style: { paddingRight: '0.5rem' }, children: workoutForm.days.map((day, dIdx) => (_jsxs("div", { className: "glass-panel", style: { padding: '1rem', marginBottom: '1rem' }, children: [_jsx("input", { className: "form-input", style: { fontWeight: 700, marginBottom: '1rem', background: 'transparent', border: 'none', borderBottom: '1px solid var(--clr-glass-border)', borderRadius: 0 }, value: day.dayName, onChange: e => {
                                                     const newDays = [...workoutForm.days];
                                                     newDays[dIdx].dayName = e.target.value;
                                                     setWorkoutForm({ ...workoutForm, days: newDays });
@@ -416,7 +597,7 @@ const WorkoutsPage = () => {
                                                             const newDays = [...workoutForm.days];
                                                             newDays[dIdx].exercises[eIdx].rest = e.target.value;
                                                             setWorkoutForm({ ...workoutForm, days: newDays });
-                                                        } })] }, eIdx))), _jsx("button", { type: "button", className: "btn btn-secondary w-full", style: { fontSize: '0.8rem', padding: '0.4rem' }, onClick: () => addExercise(dIdx), children: "+ Add Exercise" })] }, dIdx))) }), _jsx("button", { type: "button", className: "btn btn-secondary w-full mb-4", onClick: addWorkoutDay, children: "+ Add Day" })] }), _jsx("div", { style: { marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)', position: 'sticky', bottom: 0, background: 'var(--clr-bg-sidebar)', zIndex: 10 }, children: _jsx("button", { className: "btn btn-primary w-full", type: "submit", children: "Save Template" }) })] }) }), _jsx(Modal, { isOpen: isDietModalOpen, onClose: () => setIsDietModalOpen(false), title: "Create Diet Template", children: _jsxs("form", { onSubmit: handleCreateDiet, style: { display: 'flex', flexDirection: 'column', height: '100%' }, children: [_jsxs("div", { style: { flex: 1 }, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Plan Name" }), _jsx("input", { className: "form-input", required: true, value: dietForm.name, onChange: e => setDietForm({ ...dietForm, name: e.target.value }), placeholder: "e.g. High Protein Cutting" })] }), _jsxs("div", { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '1rem' }, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Goal" }), _jsxs("select", { className: "form-input", value: dietForm.goal, onChange: e => setDietForm({ ...dietForm, goal: e.target.value }), children: [_jsx("option", { children: "Weight Loss" }), _jsx("option", { children: "Muscle Gain" }), _jsx("option", { children: "Maintenance" })] })] }), _jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Calories" }), _jsx("input", { className: "form-input", type: "number", value: dietForm.calories, onChange: e => setDietForm({ ...dietForm, calories: Number(e.target.value) }) })] })] }), _jsx("div", { style: { paddingRight: '0.5rem' }, children: ['breakfast', 'lunch', 'dinner', 'snacks'].map((meal) => (_jsxs("div", { className: "glass-panel", style: { padding: '1rem', marginBottom: '1rem' }, children: [_jsx("h4", { style: { textTransform: 'capitalize', marginBottom: '1rem' }, children: meal }), dietForm.meals[meal].map((item, idx) => (_jsxs("div", { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px dashed var(--clr-glass-border)', paddingBottom: '0.5rem' }, children: [_jsx("div", { className: "col-span-full md:col-span-2", children: _jsx("input", { className: "form-input", placeholder: "Food Name", value: item.foodName, onChange: e => {
+                                                        } })] }, eIdx))), _jsx("button", { type: "button", className: "btn btn-secondary w-full", style: { fontSize: '0.8rem', padding: '0.4rem' }, onClick: () => addExercise(dIdx), children: "+ Add Exercise" })] }, dIdx))) }), _jsx("button", { type: "button", className: "btn btn-secondary w-full mb-4", onClick: addWorkoutDay, children: "+ Add Day" })] }), _jsx("div", { style: { marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)', position: 'sticky', bottom: 0, background: 'var(--clr-bg-sidebar)', zIndex: 10 }, children: _jsx("button", { className: "btn btn-primary w-full", type: "submit", children: editingWorkoutId ? 'Save Changes' : 'Save Template' }) })] }) }), _jsx(Modal, { isOpen: isDietModalOpen, onClose: () => setIsDietModalOpen(false), title: editingDietId ? 'Edit Diet Template' : 'Create Diet Template', children: _jsxs("form", { onSubmit: handleCreateDiet, style: { display: 'flex', flexDirection: 'column', height: '100%' }, children: [_jsxs("div", { style: { flex: 1 }, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Plan Name" }), _jsx("input", { className: "form-input", required: true, value: dietForm.name, onChange: e => setDietForm({ ...dietForm, name: e.target.value }), placeholder: "e.g. High Protein Cutting" })] }), _jsxs("div", { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '1rem' }, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Goal" }), _jsxs("select", { className: "form-input", value: dietForm.goal, onChange: e => setDietForm({ ...dietForm, goal: e.target.value }), children: [_jsx("option", { children: "Weight Loss" }), _jsx("option", { children: "Muscle Gain" }), _jsx("option", { children: "Maintenance" })] })] }), _jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Calories" }), _jsx("input", { className: "form-input", type: "number", value: dietForm.calories, onChange: e => setDietForm({ ...dietForm, calories: Number(e.target.value) }) })] })] }), !editingDietId && (_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Apply to branches" }), _jsxs("div", { style: { display: 'flex', flexWrap: 'wrap', gap: '1rem' }, children: [activeBranches.map((b) => (_jsxs("label", { style: { display: 'inline-flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.85rem' }, children: [_jsx("input", { type: "checkbox", style: { width: '16px', height: '16px', cursor: 'pointer' }, checked: selectedCreateBranches.includes(b.branchCode), onChange: (e) => toggleCreateBranch(b.branchCode, e.target.checked) }), b.name, " (", b.branchCode, ")"] }, b.branchCode))), activeBranches.length === 0 && (_jsx("p", { className: "text-muted", style: { fontSize: '0.8rem' }, children: "No branches available." }))] })] })), _jsx("div", { style: { paddingRight: '0.5rem' }, children: ['breakfast', 'lunch', 'dinner', 'snacks'].map((meal) => (_jsxs("div", { className: "glass-panel", style: { padding: '1rem', marginBottom: '1rem' }, children: [_jsx("h4", { style: { textTransform: 'capitalize', marginBottom: '1rem' }, children: meal }), dietForm.meals[meal].map((item, idx) => (_jsxs("div", { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px dashed var(--clr-glass-border)', paddingBottom: '0.5rem' }, children: [_jsx("div", { className: "col-span-full md:col-span-2", children: _jsx("input", { className: "form-input", placeholder: "Food Name", value: item.foodName, onChange: e => {
                                                                 const newMeals = { ...dietForm.meals };
                                                                 newMeals[meal][idx].foodName = e.target.value;
                                                                 setDietForm({ ...dietForm, meals: newMeals });
@@ -428,6 +609,6 @@ const WorkoutsPage = () => {
                                                             const newMeals = { ...dietForm.meals };
                                                             newMeals[meal][idx].calories = Number(e.target.value);
                                                             setDietForm({ ...dietForm, meals: newMeals });
-                                                        } })] }, idx))), _jsx("button", { type: "button", className: "btn btn-secondary w-full", style: { fontSize: '0.8rem', padding: '0.4rem' }, onClick: () => addMealItem(meal), children: "+ Add Item" })] }, meal))) })] }), _jsx("div", { style: { marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)', position: 'sticky', bottom: 0, background: 'var(--clr-bg-sidebar)', zIndex: 10 }, children: _jsx("button", { className: "btn btn-primary w-full", type: "submit", children: "Save Template" }) })] }) }), _jsxs(Modal, { isOpen: isAssignModalOpen, onClose: () => setIsAssignModalOpen(false), title: `Assign ${selectedTemplateForAssign?.name}`, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Search Member" }), _jsxs("div", { className: "search-bar", children: [_jsx(Search, { size: 18 }), _jsx("input", { placeholder: "Member name or email...", value: memberSearch, onChange: e => setMemberSearch(e.target.value) })] })] }), _jsx("div", { style: { maxHeight: '300px', overflowY: 'auto', marginTop: '1rem' }, children: members.map(m => (_jsxs("div", { className: "glass-panel", style: { padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', cursor: 'pointer' }, onClick: () => handleAssign(m._id), children: [_jsxs("div", { children: [_jsx("p", { style: { fontWeight: 600 }, children: m.user?.name }), _jsx("p", { className: "text-muted", style: { fontSize: '0.8rem' }, children: m.user?.email })] }), _jsx("button", { className: "btn-icon", style: { background: 'var(--clr-primary)', color: 'white' }, disabled: isAssigning, children: _jsx(Plus, { size: 16 }) })] }, m._id))) })] })] }));
+                                                        } })] }, idx))), _jsx("button", { type: "button", className: "btn btn-secondary w-full", style: { fontSize: '0.8rem', padding: '0.4rem' }, onClick: () => addMealItem(meal), children: "+ Add Item" })] }, meal))) })] }), _jsx("div", { style: { marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)', position: 'sticky', bottom: 0, background: 'var(--clr-bg-sidebar)', zIndex: 10 }, children: _jsx("button", { className: "btn btn-primary w-full", type: "submit", children: editingDietId ? 'Save Changes' : 'Save Template' }) })] }) }), _jsxs(Modal, { isOpen: isApplyBranchModalOpen, onClose: () => setIsApplyBranchModalOpen(false), title: `Apply "${selectedTemplateForBranch?.name}" to Branch`, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Select Branch" }), _jsxs("select", { className: "form-input", value: selectedApplyBranchCode, onChange: e => setSelectedApplyBranchCode(e.target.value), children: [_jsx("option", { value: "", children: "Select a branch" }), activeBranches.map(b => (_jsxs("option", { value: b.branchCode, children: [b.name, " (", b.branchCode, ")"] }, b._id)))] })] }), _jsxs("div", { style: { marginTop: '1.5rem', display: 'flex', gap: '1rem' }, children: [_jsx("button", { className: "btn btn-secondary", style: { flex: 1 }, onClick: () => setIsApplyBranchModalOpen(false), children: "Cancel" }), _jsx("button", { className: "btn btn-primary", style: { flex: 1 }, onClick: handleApplyToBranch, disabled: !selectedApplyBranchCode || isApplying, children: isApplying ? 'Applying...' : 'Apply' })] })] }), _jsxs(Modal, { isOpen: isAssignModalOpen, onClose: () => setIsAssignModalOpen(false), title: `Assign ${selectedTemplateForAssign?.name}`, children: [_jsxs("div", { className: "form-group", children: [_jsx("label", { className: "form-label", children: "Search Member" }), _jsxs("div", { className: "search-bar", children: [_jsx(Search, { size: 18 }), _jsx("input", { placeholder: "Member name or email...", value: memberSearch, onChange: e => setMemberSearch(e.target.value) })] })] }), _jsx("div", { style: { maxHeight: '300px', overflowY: 'auto', marginTop: '1rem' }, children: members.map(m => (_jsxs("div", { className: "glass-panel", style: { padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', cursor: 'pointer' }, onClick: () => handleAssign(m._id), children: [_jsxs("div", { children: [_jsx("p", { style: { fontWeight: 600 }, children: m.user?.name }), _jsx("p", { className: "text-muted", style: { fontSize: '0.8rem' }, children: m.user?.email })] }), _jsx("button", { className: "btn-icon", style: { background: 'var(--clr-primary)', color: 'white' }, disabled: isAssigning, children: _jsx(Plus, { size: 16 }) })] }, m._id))) })] })] }));
 };
 export default WorkoutsPage;

@@ -13,6 +13,7 @@ const paymentSchema = new mongoose.Schema(
     invoiceNumber: { type: String, required: true, index: true },
     invoice: { type: Object, default: {} },
     dueDate: Date,
+    membershipExpiryDate: { type: Date }, // Historical snapshots of the membership expiry resulting from THIS transaction (immutable)
     branchCode: { type: String, default: "MAIN", index: true }
   },
   { timestamps: true }

@@ -36,6 +36,23 @@ const generateUniqueSecretCode = async () => {
   return code;
 };
 
+const resolveValidTrainer = async (trainerId, branchCode, gymId) => {
+  if (!trainerId) return null;
+  if (!mongoose.Types.ObjectId.isValid(trainerId)) {
+    throw Object.assign(new Error("Trainer not found in your gym"), { statusCode: 404 });
+  }
+  const trainer = await User.findOne({ _id: trainerId, gymId, role: "trainer" });
+  if (!trainer) {
+    throw Object.assign(new Error("Trainer not found in your gym"), { statusCode: 404 });
+  }
+  const memberBranch = (branchCode || "MAIN").trim().toUpperCase();
+  const trainerBranch = (trainer.branchCode || "MAIN").trim().toUpperCase();
+  if (trainerBranch !== memberBranch) {
+    throw Object.assign(new Error("Cannot assign a trainer from another branch"), { statusCode: 403 });
+  }
+  return trainer._id;
+};
+
 const validatePlanBranchAccess = async (planId, branchCode, gymId, userRole) => {
   if (userRole === "superadmin") return;
   const normalizedBranch = (branchCode || "MAIN").trim().toUpperCase();
@@ -94,7 +111,7 @@ const createMember = asyncHandler(async (req, res) => {
   const member = await Member.create({
     gymId,
     user: user._id,
-    trainer: trainerId || null,
+    trainer: await resolveValidTrainer(trainerId, scopedBranchCode, gymId),
     currentPlan: planId || null,
     membershipStartDate: membershipStartDate || new Date(),
     membershipExpiryDate,
@@ -240,7 +257,7 @@ const updateMember = asyncHandler(async (req, res) => {
     }
 
     if (trainerId !== undefined) {
-      member.trainer = trainerId || null;
+      member.trainer = await resolveValidTrainer(trainerId, member.branchCode, req.gymId);
     }
 
     Object.assign(member, memberPayload);

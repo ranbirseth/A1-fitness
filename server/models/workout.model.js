@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const workoutPlanSchema = new mongoose.Schema({
   gymId: { type: String, required: true, index: true },
+  branchCode: { type: String, default: "MAIN", uppercase: true, trim: true, index: true },
   name: { type: String, required: true },
   goal: { 
     type: String, 
@@ -16,6 +17,7 @@ const workoutPlanSchema = new mongoose.Schema({
   isTemplate: { type: Boolean, default: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "Member" },
+  sourceTemplate: { type: mongoose.Schema.Types.ObjectId, ref: "WorkoutPlan" }, // set on member copies created from a template
   days: [
     {
       dayName: { type: String, required: true }, // e.g., "Day 1: Chest + Triceps"

@@ -21,6 +21,9 @@ export const markAsPaid = (paymentId: string) =>
 export const markAsUnpaid = (paymentId: string) =>
   http.patch(`/payments/${paymentId}/unpaid`);
 
+export const sendReminders = (branchCode?: string) =>
+  http.post("/payments/reminders", {}, { params: branchCode ? { branchCode } : {} });
+
 export const getInvoiceDeliveryStatus = () =>
   http.get("/payments/delivery-status");
 

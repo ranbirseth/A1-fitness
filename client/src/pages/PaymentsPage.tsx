@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { getPayments, getAdminPayments, getInvoice, markAsPaid, markAsUnpaid } from '../features/payments/payments.api';
-import { getMyProfile } from '../features/members/members.api';
+import { getPayments, getAdminPayments, getInvoice, markAsPaid, markAsUnpaid, sendReminders, recordPayment } from '../features/payments/payments.api';
+import { getMyProfile, renewPlan } from '../features/members/members.api';
+import { getPlans } from '../features/plans/plans.api';
 import { useAuthStore } from '../store/auth.store';
 import { useBranchStore } from '../store/branch.store';
-import { CreditCard, Calendar, Clock, Download, FileText, Printer, AlertTriangle, Check, Search, Filter, MoreVertical, X, TrendingUp, Users, DollarSign } from 'lucide-react';
+import { CreditCard, Calendar, Clock, Download, FileText, Printer, AlertTriangle, Check, Search, Filter, MoreVertical, X, TrendingUp, Users, Bell, RefreshCw, Zap } from 'lucide-react';
 import Modal from '../components/Modal';
 
 const PaymentsPage: React.FC = () => {
@@ -24,12 +25,105 @@ const PaymentsPage: React.FC = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [fetchingInvoice, setFetchingInvoice] = useState(false);
 
+  const [reminderLoading, setReminderLoading] = useState(false);
+  const [reminderResult, setReminderResult] = useState<string | null>(null);
+
+  // Renew flow (reuses the existing renewPlan + recordPayment APIs)
+  const [plans, setPlans] = useState<any[]>([]);
+  const [renewModalOpen, setRenewModalOpen] = useState(false);
+  const [renewLoading, setRenewLoading] = useState(false);
+  const [selectedRenewMember, setSelectedRenewMember] = useState<any>(null);
+  const [renewFormData, setRenewFormData] = useState({ planId: '', amount: 0, note: '', recordPayment: true });
+
+  const handleSendReminder = async () => {
+    if (!window.confirm('Send renewal reminders to members whose plans expire within 3 days?')) return;
+    setReminderLoading(true);
+    setReminderResult(null);
+    try {
+      const branch = isSuperAdmin && globalBranch && globalBranch !== 'ALL' ? globalBranch : undefined;
+      const res = await sendReminders(branch);
+      const data = res.data?.data || {};
+      const eligible = data.eligible || 0;
+      const inAppSent = data.inAppSent || 0;
+      const skipped = data.whatsappSkipped || 0;
+      let msg = `${eligible} member(s) are due for renewal.\n${inAppSent} in-app reminder(s) sent.`;
+      if (data.whatsappStatus === 'not_configured') {
+        msg += '\nWhatsApp is not configured yet.';
+      } else {
+        msg += `\n${data.whatsappReady || 0} WhatsApp message(s) ready.\n${skipped} member(s) skipped because no WhatsApp number.`;
+      }
+      if (data.duplicatesSkipped) msg += `\n${data.duplicatesSkipped} duplicate(s) skipped.`;
+      setReminderResult(msg);
+    } catch (error: any) {
+      setReminderResult('Failed to send reminders. Please try again.');
+    } finally {
+      setReminderLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const loadPlans = async () => {
+      try {
+        const res = await getPlans({});
+        const planData = res.data?.data;
+        setPlans(Array.isArray(planData) ? planData : (planData?.items || []));
+      } catch {
+        setPlans([]);
+      }
+    };
+    loadPlans();
+  }, [isAdmin]);
+
+  const handleOpenRenew = (payment: any) => {
+    const member = payment.member || {};
+    const currentPlan = payment.plan || member.currentPlan || {};
+    setSelectedRenewMember({ ...member, _id: member._id, currentPlan });
+    setRenewFormData({
+      planId: currentPlan?._id || plans[0]?._id || '',
+      amount: currentPlan?.price ? Number(currentPlan.price) : Number(payment.amount || 0),
+      note: '',
+      recordPayment: true
+    });
+    setRenewModalOpen(true);
+  };
+
+  const handleRenewMember = async () => {
+    if (!selectedRenewMember?._id) return;
+    if (!renewFormData.planId) {
+      alert('Please select a plan first');
+      return;
+    }
+    setRenewLoading(true);
+    try {
+      await renewPlan(selectedRenewMember._id, { planId: renewFormData.planId });
+      if (renewFormData.recordPayment && renewFormData.amount > 0) {
+        await recordPayment({
+          member: selectedRenewMember._id,
+          plan: renewFormData.planId,
+          amount: renewFormData.amount,
+          note: renewFormData.note,
+          status: 'paid'
+        });
+      }
+      setRenewModalOpen(false);
+      fetchData(globalBranch);
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Renewal failed. Please try again.');
+    } finally {
+      setRenewLoading(false);
+    }
+  };
+
   const fetchData = async (branch?: string) => {
     setLoading(true);
     try {
       const params: Record<string, any> = {};
       if (isSuperAdmin && branch && branch !== 'ALL') {
         params.branchCode = branch;
+      }
+      if (statusFilter && statusFilter !== 'all') {
+        params.businessStatus = statusFilter;
       }
       const [payRes, profRes] = await Promise.all([
         isAdmin ? getAdminPayments(params) : getPayments(),
@@ -57,7 +151,7 @@ const PaymentsPage: React.FC = () => {
 
   useEffect(() => {
     fetchData(globalBranch);
-  }, [globalBranch]);
+  }, [globalBranch, statusFilter]);
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     try {
@@ -78,7 +172,9 @@ const PaymentsPage: React.FC = () => {
         p.invoiceNumber?.toLowerCase().includes(searchQuery.toLowerCase())
       : p.invoiceNumber?.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
+    // Status is filtered server-side (businessStatus covers Paid / Expiring Soon /
+    // Pending buckets), so the client just applies the search term here.
+    const matchesStatus = true;
     
     return matchesSearch && matchesStatus;
   });
@@ -158,9 +254,21 @@ const PaymentsPage: React.FC = () => {
             <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: 0 }}>Payment Management</h1>
             <p className="text-muted" style={{ marginTop: '0.5rem' }}>Overview of gym revenue and member billing</p>
           </div>
-          <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <DollarSign size={18} /> Record New Payment
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            {reminderResult && (
+              <div style={{ whiteSpace: 'pre-line', fontSize: '0.85rem', color: 'var(--clr-text-muted)', textAlign: 'right' }}>
+                {reminderResult}
+              </div>
+            )}
+            <button
+              className="btn btn-primary"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}
+              onClick={handleSendReminder}
+              disabled={reminderLoading}
+            >
+              <Bell size={18} /> {reminderLoading ? 'Sending...' : 'Send Reminders'}
+            </button>
+          </div>
         </div>
 
         {/* Stats Grid */}
@@ -310,6 +418,7 @@ const PaymentsPage: React.FC = () => {
               >
                 <option value="all" style={{ background: '#1a1b23' }}>All Status</option>
                 <option value="paid" style={{ background: '#1a1b23' }}>Paid</option>
+                <option value="expiring" style={{ background: '#1a1b23' }}>Expiring Soon</option>
                 <option value="pending" style={{ background: '#1a1b23' }}>Pending</option>
               </select>
             </div>
@@ -331,53 +440,66 @@ const PaymentsPage: React.FC = () => {
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
-              <table className="data-table">
+              <table className="data-table data-table-payments">
                 <thead>
                   <tr>
-                    <th style={{ padding: '1rem 1.5rem' }}>Member</th>
+                    <th style={{ padding: '1rem 1.5rem' }}>Name</th>
                     <th style={{ padding: '1rem' }}>Plan</th>
                     <th style={{ padding: '1rem' }}>Amount</th>
-                    <th style={{ padding: '1rem' }}>Date</th>
-                    <th style={{ padding: '1rem' }}>Method</th>
+                    <th style={{ padding: '1rem' }}>Payment Date</th>
+                    <th style={{ padding: '1rem' }}>Expiry Date</th>
+                    <th style={{ padding: '1rem' }}>Mode</th>
                     <th style={{ padding: '1rem' }}>Status</th>
-                    <th style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>Actions</th>
+                    <th style={{ padding: '1rem' }}>Action</th>
+                    <th style={{ padding: '1rem 1.5rem' }}>Renew</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredPayments.map((p) => (
                     <tr key={p._id}>
-                      <td style={{ padding: '1rem 1.5rem' }}>
+                      <td style={{ padding: '0.9rem 1.5rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                           <div style={{ 
-                            width: '36px', height: '36px', borderRadius: '10px', 
+                            width: '34px', height: '34px', borderRadius: '10px', flexShrink: 0,
                             background: 'rgba(139, 92, 246, 0.1)', color: 'var(--clr-primary)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontWeight: 700, fontSize: '0.9rem'
                           }}>
                             {p.member?.user?.name?.charAt(0) || '?'}
                           </div>
-                          <div>
-                            <p style={{ fontWeight: 600, margin: 0 }}>{p.member?.user?.name || 'Unknown Member'}</p>
-                            <p className="text-muted" style={{ fontSize: '0.75rem', margin: 0, fontFamily: 'monospace' }}>{p.invoiceNumber}</p>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ fontWeight: 600, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.member?.user?.name || 'Unknown Member'}</p>
+                            <p className="text-muted" style={{ fontSize: '0.72rem', margin: 0, fontFamily: 'monospace' }}>{p.invoiceNumber}</p>
                           </div>
                         </div>
                       </td>
-                      <td style={{ padding: '1rem' }}>
-                        <span style={{ fontSize: '0.9rem' }}>{p.plan?.name || 'Manual'}</span>
+                      <td style={{ padding: '0.9rem 1rem' }}>
+                        <span style={{ fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+                          <Zap size={12} style={{ verticalAlign: 'middle', marginRight: 4, color: 'var(--clr-primary)' }} />
+                          {p.plan?.name || p.member?.currentPlan?.name || 'Manual'}
+                        </span>
                       </td>
-                      <td style={{ padding: '1rem' }}>
+                      <td style={{ padding: '0.9rem 1rem', whiteSpace: 'nowrap' }}>
                         <span style={{ fontWeight: 700, color: 'var(--clr-primary)' }}>₹{(p.amount || 0).toLocaleString()}</span>
                       </td>
-                      <td style={{ padding: '1rem' }}>
+                      <td style={{ padding: '0.9rem 1rem', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
                           <Calendar size={14} className="text-muted" />
                           {new Date(p.date || p.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                         </div>
                       </td>
-                      <td style={{ padding: '1rem' }}>
-                        <span style={{ fontSize: '0.85rem', textTransform: 'capitalize', color: 'var(--clr-text-muted)' }}>{p.method || 'cash'}</span>
+                      <td style={{ padding: '0.9rem 1rem', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                          <Clock size={14} className="text-muted" />
+                          {p.membershipExpiryDate
+                            ? new Date(p.membershipExpiryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                            : '—'}
+                        </div>
                       </td>
-                      <td style={{ padding: '1rem' }}>
+                      <td style={{ padding: '0.9rem 1rem', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--clr-text-muted)' }}>{p.method || 'cash'}</span>
+                      </td>
+                      <td style={{ padding: '0.9rem 1rem', whiteSpace: 'nowrap' }}>
                         <button 
                           onClick={() => handleToggleStatus(p._id, p.status)}
                           className={`status-badge ${p.status === 'paid' ? 'active' : 'pending'}`}
@@ -386,20 +508,29 @@ const PaymentsPage: React.FC = () => {
                           {p.status}
                         </button>
                       </td>
-                      <td style={{ padding: '1rem 1.5rem', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                      <td style={{ padding: '0.9rem 1rem', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button 
                             className="btn-icon" 
                             title="View Invoice"
                             onClick={() => handleDownloadInvoice(p._id)}
                             disabled={fetchingInvoice}
                           >
-                            <FileText size={16} />
+                            <FileText size={15} />
                           </button>
                           <button className="btn-icon" title="More Options">
-                            <MoreVertical size={16} />
+                            <MoreVertical size={15} />
                           </button>
                         </div>
+                      </td>
+                      <td style={{ padding: '0.9rem 1.5rem', whiteSpace: 'nowrap' }}>
+                        <button 
+                          className="btn btn-secondary btn-renew"
+                          style={{ padding: '0.35rem 0.9rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                          onClick={() => handleOpenRenew(p)}
+                        >
+                          <RefreshCw size={13} /> Renew
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -484,6 +615,98 @@ const PaymentsPage: React.FC = () => {
                   <Download size={18} /> Download (PDF)
                 </button>
                 <button className="btn btn-secondary" onClick={() => setIsInvoiceModalOpen(false)}>Close</button>
+              </div>
+            </div>
+          )}
+        </Modal>
+
+        {/* Renew Modal (reuses the existing renewPlan + recordPayment flow) */}
+        <Modal isOpen={renewModalOpen} onClose={() => setRenewModalOpen(false)} title="Renew Membership">
+          {selectedRenewMember && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{
+                  width: '42px', height: '42px', borderRadius: '12px',
+                  background: 'rgba(139, 92, 246, 0.1)', color: 'var(--clr-primary)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, fontSize: '1rem'
+                }}>
+                  {selectedRenewMember.user?.name?.charAt(0) || '?'}
+                </div>
+                <div>
+                  <p style={{ fontWeight: 700, margin: 0 }}>{selectedRenewMember.user?.name || 'Unknown Member'}</p>
+                  <p className="text-muted" style={{ fontSize: '0.8rem', margin: 0 }}>
+                    {selectedRenewMember.membershipExpiryDate
+                      ? `Current expiry: ${new Date(selectedRenewMember.membershipExpiryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                      : 'No active membership yet'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Plan</label>
+                <select
+                  className="form-control"
+                  value={renewFormData.planId}
+                  onChange={(e) => {
+                    const plan = plans.find(pl => pl._id === e.target.value);
+                    setRenewFormData(f => ({
+                      ...f,
+                      planId: e.target.value,
+                      amount: plan?.price ? Number(plan.price) : f.amount
+                    }));
+                  }}
+                >
+                  {plans.length === 0 && <option value="">No plans available</option>}
+                  {plans.map(pl => (
+                    <option key={pl._id} value={pl._id}>{pl.name} - ₹{pl.price}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Amount (₹)</label>
+                <input
+                  className="form-control"
+                  type="number"
+                  value={renewFormData.amount}
+                  onChange={(e) => setRenewFormData(f => ({ ...f, amount: Number(e.target.value) }))}
+                />
+              </div>
+
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={renewFormData.recordPayment}
+                    onChange={(e) => setRenewFormData(f => ({ ...f, recordPayment: e.target.checked }))}
+                  />
+                  <span style={{ fontSize: '0.85rem' }}>Mark as Paid</span>
+                </label>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Note (Optional)</label>
+                <textarea
+                  className="form-control"
+                  style={{ minHeight: '72px' }}
+                  value={renewFormData.note}
+                  onChange={(e) => setRenewFormData(f => ({ ...f, note: e.target.value }))}
+                  placeholder="Payment or subscription note..."
+                />
+              </div>
+
+              <p className="text-muted" style={{ fontSize: '0.72rem', margin: 0 }}>
+                Renew continues from the current expiry while the membership is still active.
+              </p>
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button className="btn btn-secondary flex-1" onClick={() => setRenewModalOpen(false)} disabled={renewLoading}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary flex-1" onClick={handleRenewMember} disabled={renewLoading}>
+                  <RefreshCw size={15} /> {renewLoading ? 'Renewing...' : 'Renew'}
+                </button>
               </div>
             </div>
           )}

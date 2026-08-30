@@ -74,6 +74,7 @@ export const getAttendance = (
 export const manualCheckIn = (data: {
   memberId: string;
   action: "check-in" | "check-out";
+  branchCode?: string;
 }) => http.post("/attendance/mark", data);
 
 export const getAttendanceHistory = (params: any) =>

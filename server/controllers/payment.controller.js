@@ -6,6 +6,7 @@ const { asyncHandler } = require("../utils/asyncHandler");
 const { sendResponse } = require("../utils/response");
 const { getPagination } = require("../utils/pagination");
 const invoiceDeliveryService = require("../services/invoiceDelivery.service");
+const { resolveBusinessStatusMemberIds } = require("../services/paymentStatusFilter.service");
 const mongoose = require("mongoose");
 const PDFDocument = require("pdfkit");
 
@@ -92,6 +93,7 @@ const createPayment = asyncHandler(async (req, res) => {
     date: date || new Date(),
     invoiceNumber,
     branchCode,
+    membershipExpiryDate: scopedMember.membershipExpiryDate || undefined,
     invoice: {
       invoiceNumber,
       amount,
@@ -131,8 +133,10 @@ const listPayments = asyncHandler(async (req, res) => {
 
   const filter = buildSearchFilter(gymId, req.query);
   const requestedBranch = resolveRequestedBranch(req);
+  const businessStatus = (req.query.businessStatus || "all").toString().toLowerCase();
 
-  // Search and branch restrictions are combined via $and so neither clobbers the other.
+  // Search, branch restrictions and the business-status bucket are combined via
+  // $and so none clobbers the other.
   const conditions = [];
   if (q) {
     const matchedMemberIds = await resolveSearchMemberIds(gymId, q);
@@ -152,8 +156,16 @@ const listPayments = asyncHandler(async (req, res) => {
       ]
     });
   }
-  if (conditions.length === 1) filter.$or = conditions[0].$or;
-  else if (conditions.length > 1) filter.$and = conditions;
+  if (businessStatus && businessStatus !== "all") {
+    const bucketMemberIds = await resolveBusinessStatusMemberIds({
+      gymId,
+      branchCode: requestedBranch,
+      code: businessStatus,
+      now: new Date()
+    });
+    conditions.push({ member: { $in: bucketMemberIds } });
+  }
+  if (conditions.length > 0) filter.$and = conditions;
 
   const [items, total] = await Promise.all([
     Payment.find(filter)

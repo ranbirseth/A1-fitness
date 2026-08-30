@@ -3,7 +3,9 @@ const { sendResponse } = require("../utils/response");
 const { getPagination } = require("../utils/pagination");
 const Member = require("../models/member.model");
 const User = require("../models/user.model");
+const { Branch } = require("../models/generic.model");
 const { getReferralBranchFilter } = require("./referral.controller");
+const { renameBranchCode } = require("../services/branchRename.service");
 
 const makeCrud = (Model, name) => ({
   create: asyncHandler(async (req, res) => {
@@ -25,9 +27,36 @@ const makeCrud = (Model, name) => ({
     sendResponse(res, { message: `${name} list fetched`, data: { items, total, page, limit } });
   }),
   update: asyncHandler(async (req, res) => {
-    const scope = { _id: req.params.id, gymId: req.gymId, ...(Model.modelName === "Branch" && req.query.branchCode ? { branchCode: req.query.branchCode } : {}) };
-    const payload = Model.modelName === "Branch" && req.user.role !== "superadmin" ? { ...req.body, branchCode: req.user.branchCode || "MAIN" } : req.body;
-    const doc = await Model.findOneAndUpdate(scope, payload, { new: true, runValidators: true });
+    if (Model.modelName === "Branch") {
+      const scope = { _id: req.params.id, gymId: req.gymId, ...(req.query.branchCode ? { branchCode: req.query.branchCode } : {}) };
+      const branch = await Branch.findOne(scope);
+      if (!branch) throw Object.assign(new Error(`${name} not found`), { statusCode: 404 });
+
+      if (req.user.role !== "superadmin") {
+        // Branch Admin/Trainer must not change branchCode - strip it server-side.
+        const { branchCode, ...rest } = req.body;
+        const doc = await Branch.findOneAndUpdate({ _id: branch._id, gymId: req.gymId }, rest, { new: true, runValidators: true });
+        return sendResponse(res, { message: `${name} updated`, data: doc });
+      }
+
+      const { branchCode, ...rest } = req.body;
+      if (branchCode !== undefined) {
+        const result = await renameBranchCode({
+          gymId: req.gymId,
+          branchId: branch._id,
+          oldCode: branch.branchCode || "MAIN",
+          newCode: branchCode,
+          branchPatch: rest
+        });
+        return sendResponse(res, { message: `${name} updated`, data: result.branch });
+      }
+      const doc = await Branch.findOneAndUpdate({ _id: branch._id, gymId: req.gymId }, rest, { new: true, runValidators: true });
+      return sendResponse(res, { message: `${name} updated`, data: doc });
+    }
+
+    const entityScope = { _id: req.params.id, gymId: req.gymId, ...(Model.modelName === "Branch" && req.query.branchCode ? { branchCode: req.query.branchCode } : {}) };
+    const payload = req.body;
+    const doc = await Model.findOneAndUpdate(entityScope, payload, { new: true, runValidators: true });
     sendResponse(res, { message: `${name} updated`, data: doc });
   }),
   remove: asyncHandler(async (req, res) => {

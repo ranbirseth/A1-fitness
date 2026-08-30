@@ -1,12 +1,13 @@
 const cron = require("node-cron");
 const Member = require("../models/member.model");
 const Notification = require("../models/notification.model");
+const { sendRenewalReminders } = require("../services/reminder.service");
 
 const startExpiryReminderJob = () => {
   // Run every hour to check for expirations
   cron.schedule("0 * * * *", async () => {
     const now = new Date();
-    
+
     // 1. Mark expired memberships
     const expiredMembers = await Member.updateMany(
       {
@@ -22,28 +23,16 @@ const startExpiryReminderJob = () => {
       console.log(`Marked ${expiredMembers.modifiedCount} memberships as expired.`);
     }
 
-    // 2. Send expiry reminders (at 9 AM daily)
+    // 2 & 3. Send expiry + payment reminders (at 9 AM daily).
     if (now.getHours() === 9) {
-      const inThreeDays = new Date(now);
-      inThreeDays.setDate(inThreeDays.getDate() + 3);
-      
-      const expiring = await Member.find({
-        membershipExpiryDate: { $gte: now, $lte: inThreeDays },
-        status: "active"
-      });
-      
-      if (expiring.length) {
-        await Notification.insertMany(
-          expiring.map((m) => ({
-            user: m.user,
-            title: "Membership expiring soon",
-            message: "Your membership will expire within 3 days. Please renew soon.",
-            type: "expiry"
-          }))
-        );
+      // Expiry reminders via the shared calendar-day reminder service
+      // (in-app expiry notifications with deduplication).
+      const summary = await sendRenewalReminders({ gymId: undefined, branchCode: undefined, now });
+      if (summary.inAppSent > 0) {
+        console.log(`Sent ${summary.inAppSent} expiry reminder(s); ${summary.duplicatesSkipped} duplicate(s) skipped.`);
       }
 
-      // 3. Send payment reminders for pending payments
+      // Payment reminders for pending payments
       const pendingPaymentMembers = await Member.find({
         paymentStatus: "pending",
         status: { $in: ["active", "pending"] }

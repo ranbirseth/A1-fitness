@@ -37,3 +37,4 @@ coverage/
 .eslintcache
 .stylelintcache
 *.tsbuildinfo
+.aider*

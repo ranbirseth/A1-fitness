@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Dumbbell, Utensils, Zap, Clock, Plus, Trash2, Search, UserPlus, AlertTriangle, Calendar, CreditCard, FileText, CheckCircle2, LogOut, CalendarCheck, TrendingUp, Award, Download, RefreshCw, UserSquare2, Mail, Phone } from 'lucide-react';
-import { getWorkoutTemplates, createWorkoutTemplate, deleteWorkoutPlan, assignWorkoutToMember, getMyWorkout } from '../features/workouts/workouts.api';
-import { getDietTemplates, createDietTemplate, deleteDietPlan, assignDietToMember, getMyDiet } from '../features/diets/diets.api';
+import { Dumbbell, Utensils, Zap, Clock, Plus, Trash2, Search, UserPlus, AlertTriangle, Calendar, CreditCard, FileText, CheckCircle2, LogOut, CalendarCheck, TrendingUp, Award, Download, RefreshCw, UserSquare2, Mail, Phone, Edit2, Building2, X } from 'lucide-react';
+import { getWorkoutTemplates, createWorkoutTemplate, updateWorkoutTemplate, deleteWorkoutPlan, applyWorkoutTemplateToBranch, removeWorkoutTemplateFromBranch, assignWorkoutToMember, getMyWorkout } from '../features/workouts/workouts.api';
+import { getDietTemplates, createDietTemplate, updateDietTemplate, deleteDietPlan, applyDietTemplateToBranch, removeDietTemplateFromBranch, assignDietToMember, getMyDiet } from '../features/diets/diets.api';
 import { getMembers, getMyProfile } from '../features/members/members.api';
+import { getBranches } from '../features/branches/branches.api';
 import { getPayments } from '../features/payments/payments.api';
 import { markAttendance, getMyAttendance, getTodayAttendanceStatus, getMyAttendanceStats, exportMyAttendance } from '../features/attendance/attendance.api';
 import { useAuthStore } from '../store/auth.store';
@@ -641,10 +642,35 @@ const MemberView: React.FC = () => {
   );
 };
 
+const DEFAULT_WORKOUT_FORM = {
+  name: '',
+  goal: 'General Fitness',
+  difficulty: 'Beginner',
+  days: [{ dayName: 'Day 1', exercises: [{ name: '', sets: 3, reps: '12', rest: '60s' }] }]
+};
+
+const DEFAULT_DIET_FORM = {
+  name: '',
+  goal: 'Maintenance',
+  calories: 2000,
+  meals: {
+    breakfast: [{ foodName: '', quantity: '', calories: 0 }],
+    lunch: [{ foodName: '', quantity: '', calories: 0 }],
+    dinner: [{ foodName: '', quantity: '', calories: 0 }],
+    snacks: [{ foodName: '', quantity: '', calories: 0 }]
+  }
+};
+
 const WorkoutsPage: React.FC = () => {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
   const isTrainer = user?.role === 'trainer';
+  const isSuperAdmin = user?.role === 'superadmin';
+  const adminBranchCode = user?.branchCode || 'MAIN';
+
+  const [branches, setBranches] = useState<{ _id: string; name: string; branchCode: string; status: string }[]>([]);
+  const [selectedBranchCode, setSelectedBranchCode] = useState<string>('');
+  const effectiveBranchCode = isSuperAdmin ? selectedBranchCode : adminBranchCode;
 
   const [activeTab, setActiveTab] = useState<'workouts' | 'diets'>('workouts');
   const [workoutTemplates, setWorkoutTemplates] = useState<any[]>([]);
@@ -653,6 +679,15 @@ const WorkoutsPage: React.FC = () => {
 
   const [isWorkoutModalOpen, setIsWorkoutModalOpen] = useState(false);
   const [isDietModalOpen, setIsDietModalOpen] = useState(false);
+  const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
+  const [editingDietId, setEditingDietId] = useState<string | null>(null);
+  const [selectedCreateBranches, setSelectedCreateBranches] = useState<string[]>([]);
+
+  const [isApplyBranchModalOpen, setIsApplyBranchModalOpen] = useState(false);
+  const [selectedTemplateForBranch, setSelectedTemplateForBranch] = useState<{ id: string, type: 'workout' | 'diet', name: string } | null>(null);
+  const [selectedApplyBranchCode, setSelectedApplyBranchCode] = useState('');
+  const [isApplying, setIsApplying] = useState(false);
+
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedTemplateForAssign, setSelectedTemplateForAssign] = useState<{ id: string, type: 'workout' | 'diet', name: string } | null>(null);
 
@@ -660,31 +695,25 @@ const WorkoutsPage: React.FC = () => {
   const [memberSearch, setMemberSearch] = useState('');
   const [isAssigning, setIsAssigning] = useState(false);
 
-  const [workoutForm, setWorkoutForm] = useState({
-    name: '',
-    goal: 'General Fitness',
-    difficulty: 'Beginner',
-    days: [{ dayName: 'Day 1', exercises: [{ name: '', sets: 3, reps: '12', rest: '60s' }] }]
-  });
+  const [workoutForm, setWorkoutForm] = useState(DEFAULT_WORKOUT_FORM);
+  const [dietForm, setDietForm] = useState(DEFAULT_DIET_FORM);
 
-  const [dietForm, setDietForm] = useState({
-    name: '',
-    goal: 'Maintenance',
-    calories: 2000,
-    meals: {
-      breakfast: [{ foodName: '', quantity: '', calories: 0 }],
-      lunch: [{ foodName: '', quantity: '', calories: 0 }],
-      dinner: [{ foodName: '', quantity: '', calories: 0 }],
-      snacks: [{ foodName: '', quantity: '', calories: 0 }]
+  useEffect(() => {
+    if (isSuperAdmin) {
+      getBranches({ limit: 100 }).then(res => {
+        const items = res.data?.data?.items || [];
+        setBranches(items);
+      }).catch(() => {});
     }
-  });
+  }, [isSuperAdmin]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
+      const branchQuery = isSuperAdmin ? (selectedBranchCode || undefined) : undefined;
       const [wRes, dRes] = await Promise.allSettled([
-        getWorkoutTemplates(),
-        getDietTemplates()
+        getWorkoutTemplates(branchQuery),
+        getDietTemplates(branchQuery)
       ]);
 
       if (wRes.status === 'fulfilled') {
@@ -711,52 +740,104 @@ const WorkoutsPage: React.FC = () => {
     if (isAdmin || isTrainer) {
       fetchData();
     }
-  }, [isAdmin, isTrainer]);
+  }, [isAdmin, isTrainer, isSuperAdmin, selectedBranchCode]);
 
   useEffect(() => {
     if (isAssignModalOpen) {
-      getMembers({ search: memberSearch, limit: 10 }).then(res => {
+      getMembers({ search: memberSearch, limit: 10, branchCode: effectiveBranchCode }).then(res => {
         setMembers(res.data.data.items);
       });
     }
-  }, [isAssignModalOpen, memberSearch]);
+  }, [isAssignModalOpen, memberSearch, isSuperAdmin, selectedBranchCode, effectiveBranchCode]);
+
+  const toggleCreateBranch = (code: string, checked: boolean) => {
+    setSelectedCreateBranches(prev => checked ? [...prev, code] : prev.filter(c => c !== code));
+  };
+
+  const handleOpenCreateWorkout = () => {
+    setEditingWorkoutId(null);
+    setWorkoutForm(DEFAULT_WORKOUT_FORM);
+    setSelectedCreateBranches(selectedBranchCode ? [selectedBranchCode] : []);
+    setIsWorkoutModalOpen(true);
+  };
+
+  const handleOpenEditWorkout = (t: any) => {
+    setEditingWorkoutId(t._id);
+    setWorkoutForm({
+      name: t.name || '',
+      goal: t.goal || 'General Fitness',
+      difficulty: t.difficulty || 'Beginner',
+      days: t.days?.length ? t.days : DEFAULT_WORKOUT_FORM.days
+    });
+    setSelectedCreateBranches([]);
+    setIsWorkoutModalOpen(true);
+  };
+
+  const handleOpenCreateDiet = () => {
+    setEditingDietId(null);
+    setDietForm(DEFAULT_DIET_FORM);
+    setSelectedCreateBranches(selectedBranchCode ? [selectedBranchCode] : []);
+    setIsDietModalOpen(true);
+  };
+
+  const handleOpenEditDiet = (t: any) => {
+    setEditingDietId(t._id);
+    setDietForm({
+      name: t.name || '',
+      goal: t.goal || 'Maintenance',
+      calories: t.calories ?? 2000,
+      meals: t.meals && t.meals.breakfast ? t.meals : DEFAULT_DIET_FORM.meals
+    });
+    setSelectedCreateBranches([]);
+    setIsDietModalOpen(true);
+  };
 
   const handleCreateWorkout = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingWorkoutId && selectedCreateBranches.length === 0) {
+      alert("Please select at least one branch.");
+      return;
+    }
     try {
-      await createWorkoutTemplate(workoutForm);
+      const payload = { ...workoutForm, branches: selectedCreateBranches };
+      if (editingWorkoutId) {
+        await updateWorkoutTemplate(editingWorkoutId, { name: workoutForm.name, goal: workoutForm.goal, difficulty: workoutForm.difficulty, days: workoutForm.days });
+      } else {
+        await createWorkoutTemplate(payload);
+      }
       setIsWorkoutModalOpen(false);
-      setWorkoutForm({
-        name: '',
-        goal: 'General Fitness',
-        difficulty: 'Beginner',
-        days: [{ dayName: 'Day 1', exercises: [{ name: '', sets: 3, reps: '12', rest: '60s' }] }]
-      });
+      setEditingWorkoutId(null);
+      setWorkoutForm(DEFAULT_WORKOUT_FORM);
       fetchData();
     } catch (error) {
-      alert("Failed to create workout template");
+      alert("Failed to save workout template");
     }
   };
 
   const handleCreateDiet = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingDietId && selectedCreateBranches.length === 0) {
+      alert("Please select at least one branch.");
+      return;
+    }
+    const { errors, meals } = validateDietForm(dietForm);
+    if (errors.length) {
+      alert(errors.join('\n'));
+      return;
+    }
     try {
-      await createDietTemplate(dietForm);
+      const payload = { ...dietForm, meals, branches: editingDietId ? undefined : selectedCreateBranches };
+      if (editingDietId) {
+        await updateDietTemplate(editingDietId, { name: dietForm.name, goal: dietForm.goal, calories: dietForm.calories, meals });
+      } else {
+        await createDietTemplate(payload);
+      }
       setIsDietModalOpen(false);
-      setDietForm({
-        name: '',
-        goal: 'Maintenance',
-        calories: 2000,
-        meals: {
-          breakfast: [{ foodName: '', quantity: '', calories: 0 }],
-          lunch: [{ foodName: '', quantity: '', calories: 0 }],
-          dinner: [{ foodName: '', quantity: '', calories: 0 }],
-          snacks: [{ foodName: '', quantity: '', calories: 0 }]
-        }
-      });
+      setEditingDietId(null);
+      setDietForm(DEFAULT_DIET_FORM);
       fetchData();
-    } catch (error) {
-      alert("Failed to create diet template");
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Failed to save diet template");
     }
   };
 
@@ -769,12 +850,64 @@ const WorkoutsPage: React.FC = () => {
       } else {
         await assignDietToMember({ memberId, templateId: selectedTemplateForAssign.id });
       }
-      alert("Plan assigned successfully!");
+      alert("Template assigned successfully!");
       setIsAssignModalOpen(false);
     } catch (error) {
-      alert("Failed to assign plan");
+      alert("Failed to assign template");
     } finally {
       setIsAssigning(false);
+    }
+  };
+
+  const handleOpenApplyBranch = (t: any, type: 'workout' | 'diet') => {
+    setSelectedTemplateForBranch({ id: t._id, type, name: t.name });
+    setSelectedApplyBranchCode('');
+    setIsApplyBranchModalOpen(true);
+  };
+
+  const handleApplyToBranch = async () => {
+    if (!selectedTemplateForBranch || !selectedApplyBranchCode) return;
+    setIsApplying(true);
+    try {
+      if (selectedTemplateForBranch.type === 'workout') {
+        await applyWorkoutTemplateToBranch(selectedTemplateForBranch.id, selectedApplyBranchCode);
+      } else {
+        await applyDietTemplateToBranch(selectedTemplateForBranch.id, selectedApplyBranchCode);
+      }
+      setIsApplyBranchModalOpen(false);
+      fetchData();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to apply template to branch');
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  const handleRemoveFromBranch = async (t: any, type: 'workout' | 'diet', branchCode: string) => {
+    if (!window.confirm(`Remove "${t.name}" from branch ${branchCode}?`)) return;
+    try {
+      if (type === 'workout') {
+        await removeWorkoutTemplateFromBranch(t._id, branchCode);
+      } else {
+        await removeDietTemplateFromBranch(t._id, branchCode);
+      }
+      fetchData();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to remove template from branch');
+    }
+  };
+
+  const handleDeleteTemplate = async (t: any, type: 'workout' | 'diet') => {
+    if (!window.confirm(`Delete the template "${t.name}"? This removes it for ALL branches.`)) return;
+    try {
+      if (type === 'workout') {
+        await deleteWorkoutPlan(t._id);
+      } else {
+        await deleteDietPlan(t._id);
+      }
+      fetchData();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to delete template');
     }
   };
 
@@ -801,6 +934,37 @@ const WorkoutsPage: React.FC = () => {
     });
   };
 
+  const validateDietForm = (form: typeof dietForm) => {
+    const errors: string[] = [];
+    if (!form.name.trim()) errors.push('Plan name is required.');
+    if (!Number.isFinite(Number(form.calories))) errors.push('Calories must be a valid number.');
+
+    const sanitized: { [k: string]: { foodName: string; quantity: string; calories: number }[] } = {};
+    let hasAnyMeal = false;
+    const labels: { [k: string]: string } = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snacks: 'Snacks' };
+
+    (Object.keys(form.meals) as (keyof typeof form.meals)[]).forEach((meal) => {
+      const kept: { foodName: string; quantity: string; calories: number }[] = [];
+      form.meals[meal].forEach((item) => {
+        const fn = (item.foodName || '').trim();
+        const qty = (item.quantity || '').trim();
+        if (!fn && !qty && (item.calories === 0 || item.calories === undefined || item.calories === null)) {
+          return; // completely empty placeholder row -> drop
+        }
+        if (!fn && qty) errors.push(`${labels[meal]}: please enter a food name.`);
+        if (fn && !qty) errors.push(`${labels[meal]} (${fn}): please enter a quantity.`);
+        if (fn && qty && !Number.isFinite(Number(item.calories))) errors.push(`${labels[meal]} (${fn}): calories must be a valid number.`);
+        kept.push({ foodName: fn, quantity: qty, calories: Number.isFinite(Number(item.calories)) ? Number(item.calories) : 0 });
+      });
+      sanitized[meal] = kept;
+      if (kept.length) hasAnyMeal = true;
+    });
+
+    if (!editingDietId && !hasAnyMeal) errors.push('Please add at least one meal item with food name and quantity.');
+
+    return { errors, meals: sanitized };
+  };
+
   if (!user) {
     return <div className="loading-state"><div className="spinner"></div></div>;
   }
@@ -809,21 +973,64 @@ const WorkoutsPage: React.FC = () => {
     return <MemberView />;
   }
 
+  const activeBranches = branches.filter(b => b.status === 'active');
+
+  const renderBranchesApplied = (t: any, type: 'workout' | 'diet') => (
+    <div style={{ marginBottom: '1rem', textAlign: 'left' }}>
+      <p className="text-muted" style={{ fontSize: '0.7rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+        Applied Branches
+      </p>
+      {(t.appliedBranches || []).length > 0 ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+          {(t.appliedBranches || []).sort().map((bc: string) => (
+            <span key={bc} style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              fontSize: '0.75rem',
+              padding: '0.2rem 0.6rem',
+              borderRadius: '12px',
+              background: 'rgba(139, 92, 246, 0.12)',
+              color: 'var(--clr-primary)'
+            }}>
+              <Building2 size={10} /> {bc}
+              {isSuperAdmin && (
+                <span
+                  onClick={(e) => { e.stopPropagation(); handleRemoveFromBranch(t, type, bc); }}
+                  title={`Remove from ${bc}`}
+                  style={{ cursor: 'pointer', display: 'inline-flex' }}
+                >
+                  <X size={12} style={{ opacity: 0.7, marginLeft: '0.15rem' }} />
+                </span>
+              )}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="text-muted" style={{ fontSize: '0.8rem', fontStyle: 'italic' }}>None</p>
+      )}
+    </div>
+  );
+
   return (
     <div>
       <div className="page-header" style={{ marginBottom: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h1>Workout & Diet Library</h1>
-            <p className="text-muted">Manage templates and assign plans to members.</p>
+            <p className="text-muted">
+              {isSuperAdmin
+                ? 'Create reusable templates once, then apply them to any branch.'
+                : 'Use the templates Super Admin has applied to your branch.'}
+            </p>
           </div>
           <div style={{ display: 'flex', gap: '1rem' }}>
             {activeTab === 'workouts' ? (
-              (isAdmin || isTrainer) && <button className="btn btn-primary" onClick={() => setIsWorkoutModalOpen(true)}>
+              isSuperAdmin && <button className="btn btn-primary" onClick={handleOpenCreateWorkout}>
                 <Plus size={18} /> Create Workout
               </button>
             ) : (
-              (isAdmin || isTrainer) && <button className="btn btn-primary" onClick={() => setIsDietModalOpen(true)}>
+              isSuperAdmin && <button className="btn btn-primary" onClick={handleOpenCreateDiet}>
                 <Plus size={18} /> Create Diet
               </button>
             )}
@@ -846,6 +1053,29 @@ const WorkoutsPage: React.FC = () => {
         </button>
       </div>
 
+      {isSuperAdmin && (
+        <div className="glass-panel" style={{ padding: '1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <label className="form-label" style={{ margin: 0, whiteSpace: 'nowrap' }}>Filter by Branch:</label>
+          <select
+            className="form-input"
+            style={{ maxWidth: '280px' }}
+            value={selectedBranchCode}
+            onChange={(e) => setSelectedBranchCode(e.target.value)}
+          >
+            <option value="">All branches</option>
+            {branches.map((b) => (
+              <option key={b.branchCode} value={b.branchCode}>{b.name} ({b.branchCode})</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {!isSuperAdmin && (isAdmin || isTrainer) && (
+        <div className="glass-panel" style={{ padding: '0.75rem 1rem', marginBottom: '1.5rem', background: 'rgba(139, 92, 246, 0.06)', border: '1px solid rgba(139, 92, 246, 0.2)', fontSize: '0.85rem' }}>
+          You can only see and use templates that Super Admin has applied to your branch ({adminBranchCode}).
+        </div>
+      )}
+
       {loading ? (
         <div className="loading-state"><div className="spinner"></div></div>
       ) : (
@@ -859,6 +1089,8 @@ const WorkoutsPage: React.FC = () => {
                     <span className="status-badge active" style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem', flexShrink: 0 }}>{t.difficulty}</span>
                   </div>
                   <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '1rem' }}>Goal: {t.goal}</p>
+
+                  {isSuperAdmin && renderBranchesApplied(t, 'workout')}
 
                   <div style={{ flex: 1, marginBottom: '1.5rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--clr-primary)', fontSize: '0.85rem', marginBottom: '0.75rem', fontWeight: '600' }}>
@@ -881,25 +1113,42 @@ const WorkoutsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)' }}>
-                    <button className="btn btn-secondary flex-1" style={{ fontSize: '0.85rem', padding: '0.5rem' }} onClick={() => {
-                      setSelectedTemplateForAssign({ id: t._id, type: 'workout', name: t.name });
-                      setIsAssignModalOpen(true);
-                    }}>
-                      <UserPlus size={16} /> Assign
-                    </button>
-                    {(isAdmin || isTrainer) && (
-                      <button className="btn btn-icon danger" style={{ width: '36px', height: '36px' }} onClick={() => deleteWorkoutPlan(t._id).then(fetchData)}>
-                        <Trash2 size={16} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button className="btn btn-secondary flex-1" style={{ fontSize: '0.85rem', padding: '0.5rem' }} onClick={() => {
+                        setSelectedTemplateForAssign({ id: t._id, type: 'workout', name: t.name });
+                        setIsAssignModalOpen(true);
+                      }}>
+                        <UserPlus size={16} /> Assign
                       </button>
-                    )}
+                      {isSuperAdmin && (
+                        <>
+                          <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '0.5rem 0.75rem' }} title="Apply to branch"
+                            onClick={() => handleOpenApplyBranch(t, 'workout')}>
+                            <Building2 size={16} />
+                          </button>
+                          <button className="btn btn-icon" style={{ width: '36px', height: '36px' }} title="Edit template"
+                            onClick={() => handleOpenEditWorkout(t)}>
+                            <Edit2 size={16} />
+                          </button>
+                          <button className="btn btn-icon danger" style={{ width: '36px', height: '36px' }} title="Delete template"
+                            onClick={() => handleDeleteTemplate(t, 'workout')}>
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))
             ) : (
               <div className="glass-panel" style={{ gridColumn: '1 / -1', padding: '3rem', textAlign: 'center' }}>
                 <Dumbbell size={48} className="text-muted" style={{ margin: '0 auto 1rem', opacity: 0.5 }} />
-                <p className="text-muted">No workout templates found. Create your first one!</p>
+                <p className="text-muted">
+                  {isSuperAdmin
+                    ? 'No workout templates found. Create your first one!'
+                    : 'No workout templates are available for your branch yet. Ask Super Admin to apply one.'}
+                </p>
               </div>
             )
           ) : (
@@ -911,6 +1160,8 @@ const WorkoutsPage: React.FC = () => {
                     <span className="status-badge active" style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem', flexShrink: 0 }}>{t.goal}</span>
                   </div>
                   <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '1rem' }}>Target: {t.calories} kcal</p>
+
+                  {isSuperAdmin && renderBranchesApplied(t, 'diet')}
 
                   <div style={{ flex: 1, marginBottom: '1.5rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--clr-success)', fontSize: '0.85rem', marginBottom: '0.75rem', fontWeight: '600' }}>
@@ -935,32 +1186,49 @@ const WorkoutsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)' }}>
-                    <button className="btn btn-secondary flex-1" style={{ fontSize: '0.85rem', padding: '0.5rem' }} onClick={() => {
-                      setSelectedTemplateForAssign({ id: t._id, type: 'diet', name: t.name });
-                      setIsAssignModalOpen(true);
-                    }}>
-                      <UserPlus size={16} /> Assign
-                    </button>
-                    {(isAdmin || isTrainer) && (
-                      <button className="btn btn-icon danger" style={{ width: '36px', height: '36px' }} onClick={() => deleteDietPlan(t._id).then(fetchData)}>
-                        <Trash2 size={16} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button className="btn btn-secondary flex-1" style={{ fontSize: '0.85rem', padding: '0.5rem' }} onClick={() => {
+                        setSelectedTemplateForAssign({ id: t._id, type: 'diet', name: t.name });
+                        setIsAssignModalOpen(true);
+                      }}>
+                        <UserPlus size={16} /> Assign
                       </button>
-                    )}
+                      {isSuperAdmin && (
+                        <>
+                          <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '0.5rem 0.75rem' }} title="Apply to branch"
+                            onClick={() => handleOpenApplyBranch(t, 'diet')}>
+                            <Building2 size={16} />
+                          </button>
+                          <button className="btn btn-icon" style={{ width: '36px', height: '36px' }} title="Edit template"
+                            onClick={() => handleOpenEditDiet(t)}>
+                            <Edit2 size={16} />
+                          </button>
+                          <button className="btn btn-icon danger" style={{ width: '36px', height: '36px' }} title="Delete template"
+                            onClick={() => handleDeleteTemplate(t, 'diet')}>
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))
             ) : (
               <div className="glass-panel" style={{ gridColumn: '1 / -1', padding: '3rem', textAlign: 'center' }}>
                 <Utensils size={48} className="text-muted" style={{ margin: '0 auto 1rem', opacity: 0.5 }} />
-                <p className="text-muted">No diet plans found. Create your first one!</p>
+                <p className="text-muted">
+                  {isSuperAdmin
+                    ? 'No diet plans found. Create your first one!'
+                    : 'No diet plans are available for your branch yet. Ask Super Admin to apply one.'}
+                </p>
               </div>
             )
           )}
         </div>
       )}
 
-      <Modal isOpen={isWorkoutModalOpen} onClose={() => setIsWorkoutModalOpen(false)} title="Create Workout Template">
+      <Modal isOpen={isWorkoutModalOpen} onClose={() => setIsWorkoutModalOpen(false)} title={editingWorkoutId ? 'Edit Workout Template' : 'Create Workout Template'}>
         <form onSubmit={handleCreateWorkout} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <div style={{ flex: 1 }}>
             <div className="form-group">
@@ -986,6 +1254,28 @@ const WorkoutsPage: React.FC = () => {
                 </select>
               </div>
             </div>
+
+            {!editingWorkoutId && (
+              <div className="form-group">
+                <label className="form-label">Apply to branches</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+                  {activeBranches.map((b) => (
+                    <label key={b.branchCode} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                      <input
+                        type="checkbox"
+                        style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                        checked={selectedCreateBranches.includes(b.branchCode)}
+                        onChange={(e) => toggleCreateBranch(b.branchCode, e.target.checked)}
+                      />
+                      {b.name} ({b.branchCode})
+                    </label>
+                  ))}
+                  {activeBranches.length === 0 && (
+                    <p className="text-muted" style={{ fontSize: '0.8rem' }}>No branches available.</p>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div style={{ paddingRight: '0.5rem' }}>
               {workoutForm.days.map((day, dIdx) => (
@@ -1034,12 +1324,12 @@ const WorkoutsPage: React.FC = () => {
           </div>
 
           <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)', position: 'sticky', bottom: 0, background: 'var(--clr-bg-sidebar)', zIndex: 10 }}>
-            <button className="btn btn-primary w-full" type="submit">Save Template</button>
+            <button className="btn btn-primary w-full" type="submit">{editingWorkoutId ? 'Save Changes' : 'Save Template'}</button>
           </div>
         </form>
       </Modal>
 
-      <Modal isOpen={isDietModalOpen} onClose={() => setIsDietModalOpen(false)} title="Create Diet Template">
+      <Modal isOpen={isDietModalOpen} onClose={() => setIsDietModalOpen(false)} title={editingDietId ? 'Edit Diet Template' : 'Create Diet Template'}>
         <form onSubmit={handleCreateDiet} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <div style={{ flex: 1 }}>
             <div className="form-group">
@@ -1060,6 +1350,28 @@ const WorkoutsPage: React.FC = () => {
                 <input className="form-input" type="number" value={dietForm.calories} onChange={e => setDietForm({...dietForm, calories: Number(e.target.value)})} />
               </div>
             </div>
+
+            {!editingDietId && (
+              <div className="form-group">
+                <label className="form-label">Apply to branches</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+                  {activeBranches.map((b) => (
+                    <label key={b.branchCode} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                      <input
+                        type="checkbox"
+                        style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                        checked={selectedCreateBranches.includes(b.branchCode)}
+                        onChange={(e) => toggleCreateBranch(b.branchCode, e.target.checked)}
+                      />
+                      {b.name} ({b.branchCode})
+                    </label>
+                  ))}
+                  {activeBranches.length === 0 && (
+                    <p className="text-muted" style={{ fontSize: '0.8rem' }}>No branches available.</p>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div style={{ paddingRight: '0.5rem' }}>
               {(['breakfast', 'lunch', 'dinner', 'snacks'] as const).map((meal) => (
@@ -1092,9 +1404,41 @@ const WorkoutsPage: React.FC = () => {
             </div>
           </div>
           <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)', position: 'sticky', bottom: 0, background: 'var(--clr-bg-sidebar)', zIndex: 10 }}>
-            <button className="btn btn-primary w-full" type="submit">Save Template</button>
+            <button className="btn btn-primary w-full" type="submit">{editingDietId ? 'Save Changes' : 'Save Template'}</button>
           </div>
         </form>
+      </Modal>
+
+      <Modal isOpen={isApplyBranchModalOpen} onClose={() => setIsApplyBranchModalOpen(false)} title={`Apply "${selectedTemplateForBranch?.name}" to Branch`}>
+        <div className="form-group">
+          <label className="form-label">Select Branch</label>
+          <select
+            className="form-input"
+            value={selectedApplyBranchCode}
+            onChange={e => setSelectedApplyBranchCode(e.target.value)}
+          >
+            <option value="">Select a branch</option>
+            {activeBranches.map(b => (
+              <option key={b._id} value={b.branchCode}>
+                {b.name} ({b.branchCode})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
+          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setIsApplyBranchModalOpen(false)}>
+            Cancel
+          </button>
+          <button
+            className="btn btn-primary"
+            style={{ flex: 1 }}
+            onClick={handleApplyToBranch}
+            disabled={!selectedApplyBranchCode || isApplying}
+          >
+            {isApplying ? 'Applying...' : 'Apply'}
+          </button>
+        </div>
       </Modal>
 
       <Modal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} title={`Assign ${selectedTemplateForAssign?.name}`}>

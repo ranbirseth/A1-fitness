@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const dietPlanSchema = new mongoose.Schema({
   gymId: { type: String, required: true, index: true },
+  branchCode: { type: String, default: "MAIN", uppercase: true, trim: true, index: true },
   name: { type: String, required: true },
   goal: { 
     type: String, 
@@ -12,6 +13,7 @@ const dietPlanSchema = new mongoose.Schema({
   isTemplate: { type: Boolean, default: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "Member" },
+  sourceTemplate: { type: mongoose.Schema.Types.ObjectId, ref: "DietPlan" }, // set on member copies created from a template
   meals: {
     breakfast: [
       {

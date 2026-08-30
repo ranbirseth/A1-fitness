@@ -60,7 +60,7 @@ function validateGeofence(latitude, longitude) {
  * @access  Public (Secret Code) OR Private (Admin/Trainer with memberId)
  */
 const markAttendance = asyncHandler(async (req, res) => {
-  const { secretCode, memberId, action, location } = req.body;
+  const { secretCode, memberId, action, location, branchCode: requestedBranchCode } = req.body;
   const isAdminOrTrainer = req.user && ["admin", "superadmin", "trainer"].includes(req.user.role);
 
   let member;
@@ -72,6 +72,12 @@ const markAttendance = asyncHandler(async (req, res) => {
       const memBranch = (member.branchCode || "MAIN").trim().toUpperCase();
       if (userBranch !== memBranch) {
         throw new AppError("Member not found in your branch", 404);
+      }
+    } else if (requestedBranchCode) {
+      const validatedBranch = requestedBranchCode.trim().toUpperCase();
+      const memBranch = (member.branchCode || "MAIN").trim().toUpperCase();
+      if (validatedBranch !== memBranch) {
+        throw new AppError("Member does not belong to the selected branch", 400);
       }
     }
   } else {
@@ -688,7 +694,8 @@ const generatePDFHtml = (userData, member, records, stats, startDate, endDate) =
  * @access  Private (Admin/Trainer)
  */
 const history = asyncHandler(async (req, res) => {
-  const { skip, limit, page, search, date } = getPagination(req.query);
+  const { skip, limit, page } = getPagination(req.query);
+  const { search, date } = req.query;
 
   const query = { gymId: req.gymId, deletedAt: null };
   if (date) query.date = date;
@@ -698,8 +705,7 @@ const history = asyncHandler(async (req, res) => {
     : (req.query.branchCode && req.query.branchCode !== "ALL" && req.query.branchCode !== "all" ? req.query.branchCode.trim().toUpperCase() : undefined);
 
   if (requestedBranch) {
-    const branchMemberIds = await Member.find({ gymId: req.gymId, branchCode: requestedBranch }).distinct("_id");
-    query.$or = [{ branchCode: requestedBranch }, { member: { $in: branchMemberIds } }];
+    query.branchCode = requestedBranch;
   }
 
   if (search) {
@@ -709,11 +715,7 @@ const history = asyncHandler(async (req, res) => {
       { $match: { "userDoc.name": new RegExp(search, "i") } }
     ]);
     const searchMemberIds = members.map(m => m._id);
-    if (query.$or) {
-      query.member = { $in: searchMemberIds };
-    } else {
-      query.member = { $in: searchMemberIds };
-    }
+    query.member = { $in: searchMemberIds };
   }
 
   const [items, total] = await Promise.all([
@@ -739,6 +741,12 @@ const checkIn = asyncHandler(async (req, res) => {
     const memBranch = (member.branchCode || "MAIN").trim().toUpperCase();
     if (userBranch !== memBranch) {
       throw new AppError("Member not found in your branch", 404);
+    }
+  } else if (req.user && req.user.role === "superadmin" && req.body.branchCode) {
+    const validatedBranch = req.body.branchCode.trim().toUpperCase();
+    const memBranch = (member.branchCode || "MAIN").trim().toUpperCase();
+    if (validatedBranch !== memBranch) {
+      throw new AppError("Member does not belong to the selected branch", 400);
     }
   }
 

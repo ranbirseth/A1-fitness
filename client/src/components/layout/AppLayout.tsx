@@ -3,7 +3,8 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import { useAuthStore } from '../../store/auth.store';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { getMyProfile } from '../../features/members/members.api';
+import { getMyProfile as getMyMemberProfile } from '../../features/members/members.api';
+import { getMyProfile as getMyUserProfile } from '../../features/users/users.api';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -17,16 +18,55 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  // One-time session sync on mount so a branch rename (or any profile change)
+  // survives a hard refresh - the persisted auth store is refreshed from the DB.
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) return;
+    const sync = async () => {
+      try {
+        if (user.role === "member") {
+          const { data } = await getMyMemberProfile();
+          const m = data.data;
+          if (!cancelled && m) {
+            setUser({
+              ...user,
+              name: m.user?.name || user.name,
+              email: m.user?.email || user.email,
+              phone: m.user?.phone || user.phone,
+              photo: m.user?.photo || user.photo,
+              branchCode: m.branchCode || user.branchCode || "MAIN",
+              status: m.status ?? user.status,
+              paymentStatus: m.paymentStatus ?? user.paymentStatus,
+            });
+          }
+        } else {
+          const { data } = await getMyUserProfile();
+          if (!cancelled && data.data) {
+            setUser({ ...user, ...data.data, paymentStatus: data.data.paymentStatus ?? user.paymentStatus });
+          }
+        }
+      } catch (error) {
+        console.error("Session sync error:", error);
+      }
+    };
+    sync();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Background check for status changes (especially for members)
   useEffect(() => {
     if (user?.role === "member") {
       const interval = setInterval(async () => {
         try {
-          const { data } = await getMyProfile();
+          const { data } = await getMyMemberProfile();
           const updatedStatus = data.data?.status;
           const updatedPaymentStatus = data.data?.paymentStatus;
-          if (updatedStatus && (updatedStatus !== user.status || updatedPaymentStatus !== user.paymentStatus)) {
-            setUser({ ...user, status: updatedStatus, paymentStatus: updatedPaymentStatus });
+          const updatedBranchCode = data.data?.branchCode;
+          if (updatedStatus && (updatedStatus !== user.status || updatedPaymentStatus !== user.paymentStatus || (updatedBranchCode && updatedBranchCode !== user.branchCode))) {
+            setUser({ ...user, status: updatedStatus, paymentStatus: updatedPaymentStatus, branchCode: updatedBranchCode || user.branchCode });
             if (updatedStatus === "inactive") {
               navigate("/account-inactive");
             } else if (updatedStatus === "pending") {
