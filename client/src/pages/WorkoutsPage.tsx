@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Dumbbell, Utensils, Zap, Clock, Plus, Trash2, Search, UserPlus, AlertTriangle, Calendar, CreditCard, FileText, CheckCircle2, LogOut, CalendarCheck, TrendingUp, Award, Download, RefreshCw, UserSquare2, Mail, Phone, Edit2, Building2, X } from 'lucide-react';
+import { Dumbbell, Utensils, Zap, Clock, Plus, Trash2, Search, UserPlus, AlertTriangle, Calendar, CheckCircle2, LogOut, CalendarCheck, TrendingUp, Award, Download, RefreshCw, UserSquare2, Mail, Phone, Edit2, Building2, X } from 'lucide-react';
 import { getWorkoutTemplates, createWorkoutTemplate, updateWorkoutTemplate, deleteWorkoutPlan, applyWorkoutTemplateToBranch, removeWorkoutTemplateFromBranch, assignWorkoutToMember, getMyWorkout } from '../features/workouts/workouts.api';
 import { getDietTemplates, createDietTemplate, updateDietTemplate, deleteDietPlan, applyDietTemplateToBranch, removeDietTemplateFromBranch, assignDietToMember, getMyDiet } from '../features/diets/diets.api';
 import { getMembers, getMyProfile } from '../features/members/members.api';
 import { getBranches } from '../features/branches/branches.api';
-import { getPayments } from '../features/payments/payments.api';
 import { markAttendance, getMyAttendance, getTodayAttendanceStatus, getMyAttendanceStats, exportMyAttendance } from '../features/attendance/attendance.api';
 import { useAuthStore } from '../store/auth.store';
 import { useSocket } from '../hooks/useSocket';
@@ -29,7 +28,6 @@ const MemberView: React.FC = () => {
   const [workout, setWorkout] = useState<any>(null);
   const [diet, setDiet] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
-  const [payments, setPayments] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [todayAttendance, setTodayAttendance] = useState<any>(null);
@@ -50,10 +48,6 @@ const MemberView: React.FC = () => {
         getMyWorkout(),
         getMyDiet(),
         getMyProfile(),
-        getPayments().catch(err => {
-          console.error("Payment fetch error:", err);
-          return { data: { data: { items: [] } } };
-        }),
         getMyAttendance({ status: attendanceStatusFilter !== 'all' ? attendanceStatusFilter : undefined }),
         getTodayAttendanceStatus(),
         getMyAttendanceStats()
@@ -63,10 +57,9 @@ const MemberView: React.FC = () => {
       const wRes = results[0];
       const dRes = results[1];
       const pRes = results[2];
-      const payRes = results[3];
-      const attRes = results[4];
-      const todayRes = results[5];
-      const statsRes = results[6];
+      const attRes = results[3];
+      const todayRes = results[4];
+      const statsRes = results[5];
 
       if (wRes.status === 'fulfilled') {
         setWorkout(wRes.value?.data?.data ?? null);
@@ -89,14 +82,6 @@ const MemberView: React.FC = () => {
       } else {
         console.error("Failed to fetch profile:", pRes.reason);
         setProfile(null);
-      }
-
-      if (payRes.status === 'fulfilled') {
-        const paymentData = payRes.value?.data?.data?.items || payRes.value?.data?.data || [];
-        setPayments(Array.isArray(paymentData) ? paymentData : []);
-      } else {
-        console.error("Failed to fetch payments:", payRes.reason);
-        setPayments([]);
       }
 
       if (attRes.status === 'fulfilled') {
@@ -268,23 +253,23 @@ const MemberView: React.FC = () => {
             <div className="grid-cards" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
               <div className="glass-panel" style={{ padding: '1rem', textAlign: 'center' }}>
                 <TrendingUp size={24} style={{ color: 'var(--clr-success)', marginBottom: '0.5rem' }} />
-                <h3 style={{ fontSize: '1.75rem', fontWeight: 800 }}>{stats.presentDays || 0}</h3>
+                <h3 style={{ fontSize: '1.75rem', fontWeight: 800 }}>{stats.sessions || 0}</h3>
                 <p className="text-muted" style={{ fontSize: '0.75rem' }}>Total Sessions</p>
               </div>
               <div className="glass-panel" style={{ padding: '1rem', textAlign: 'center' }}>
                 <Award size={24} style={{ color: 'var(--clr-primary)', marginBottom: '0.5rem' }} />
-                <h3 style={{ fontSize: '1.75rem', fontWeight: 800 }}>{stats.attendanceRate || 0}%</h3>
+                <h3 style={{ fontSize: '1.75rem', fontWeight: 800 }}>{stats.sessionRate || 0}%</h3>
                 <p className="text-muted" style={{ fontSize: '0.75rem' }}>Attendance Rate</p>
               </div>
               <div className="glass-panel" style={{ padding: '1rem', textAlign: 'center' }}>
                 <CalendarCheck size={24} style={{ color: '#f59e0b', marginBottom: '0.5rem' }} />
-                <h3 style={{ fontSize: '1.75rem', fontWeight: 800 }}>{stats.currentStreak || 0}</h3>
+                <h3 style={{ fontSize: '1.75rem', fontWeight: 800 }}>{stats.sessionStreak || 0}</h3>
                 <p className="text-muted" style={{ fontSize: '0.75rem' }}>Current Streak</p>
               </div>
               <div className="glass-panel" style={{ padding: '1rem', textAlign: 'center' }}>
                 <Clock size={24} style={{ color: 'var(--clr-secondary)', marginBottom: '0.5rem' }} />
-                <h3 style={{ fontSize: '1.75rem', fontWeight: 800 }}>{stats.avgCheckInTime || 'N/A'}</h3>
-                <p className="text-muted" style={{ fontSize: '0.75rem' }}>Avg Check-In</p>
+                <h3 style={{ fontSize: '1.75rem', fontWeight: 800 }}>{stats.avgSessionMinutes != null ? `${stats.avgSessionMinutes} min` : 'N/A'}</h3>
+                <p className="text-muted" style={{ fontSize: '0.75rem' }}>Avg Time</p>
               </div>
             </div>
           )}
@@ -435,28 +420,40 @@ const MemberView: React.FC = () => {
           )}
 
           <div className="grid-cards" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 350px), 1fr))', gap: '1.5rem' }}>
-            <div className="glass-panel" style={{ padding: 'var(--sp-lg)', height: 'fit-content', minHeight: '300px', background: `linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(6, 182, 212, 0.1) 100%), url('https://res.cloudinary.com/dyc33dchn/image/upload/q_auto/f_auto/v1776538385/7d99dccaaae76516dc722f79811cde9b_sr3iqo.jpg')`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundBlendMode: 'overlay' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-                <div className="stat-icon" style={{ background: 'rgba(139, 92, 246, 0.1)', color: 'var(--clr-primary)', width: '40px', height: '40px', flexShrink: 0 }}>
+            <div className="glass-panel" style={{ position: 'relative', overflow: 'hidden', padding: 'var(--sp-lg)', height: 'fit-content', minHeight: '300px', background: 'linear-gradient(160deg, rgba(139, 92, 246, 0.07) 0%, rgba(30, 32, 44, 0.5) 100%)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', border: '1px solid var(--clr-glass-border)' }}>
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: 'var(--clr-accent-gradient)' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div className="stat-icon" style={{ background: 'var(--clr-accent-gradient)', color: '#fff', width: '40px', height: '40px', flexShrink: 0, boxShadow: '0 4px 14px var(--clr-primary-glow)' }}>
                   <Dumbbell size={20} />
                 </div>
-                <h2 style={{ fontSize: '1.25rem' }}>My Workout Plan</h2>
+                <div style={{ minWidth: 0 }}>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>My Workout Plan</h2>
+                  {workoutDays.length > 0 && (
+                    <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '0.15rem' }}>{workoutDays.length} day{workoutDays.length > 1 ? 's' : ''} per split</p>
+                  )}
+                </div>
               </div>
               {!workout ? <p className="text-muted">No workout assigned yet.</p> : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                  <h3 style={{ marginBottom: '0.5rem', color: 'var(--clr-text-main)' }}>{workout.name}</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '0.75rem 1rem', borderRadius: 'var(--border-radius-md)', background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.25)' }}>
+                    <span style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--clr-text-main)', wordBreak: 'break-word' }}>{workout.name}</span>
+                    <span className="status-badge active" style={{ fontSize: '0.75rem', fontWeight: 700, flexShrink: 0 }}>{workoutDays.length} Days</span>
+                  </div>
                   {workoutDays.map((day: any, i: number) => (
-                    <div key={i} className="glass-panel" style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)' }}>
-                      <h4 style={{ color: 'var(--clr-primary)', marginBottom: '1rem', borderBottom: '1px solid var(--clr-glass-border)', paddingBottom: '0.5rem' }}>{day.dayName}</h4>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div key={i} style={{ padding: '1rem', borderRadius: 'var(--border-radius-md)', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--clr-glass-border)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '50%', background: 'var(--clr-accent-gradient)', color: '#fff', fontSize: '0.7rem', fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+                        <h4 style={{ color: 'var(--clr-primary)', fontWeight: 600, fontSize: '1rem', margin: 0 }}>{day.dayName}</h4>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         {(Array.isArray(day?.exercises) ? day.exercises : []).map((ex: any, j: number) => (
-                          <div key={j} style={{ padding: '0.75rem', borderBottom: '1px solid var(--clr-glass-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                          <div key={j} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', padding: '0.6rem 0.75rem', borderRadius: 'var(--border-radius-sm)', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
                             <div style={{ minWidth: 0 }}>
-                              <p style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem', wordBreak: 'break-word' }}>{ex.name}</p>
-                              <p className="text-muted" style={{ fontSize: '0.75rem' }}>Rest: {ex.rest}</p>
+                              <p style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.15rem', wordBreak: 'break-word', color: 'var(--clr-text-main)' }}>{ex.name}</p>
+                              <p className="text-muted" style={{ fontSize: '0.72rem' }}>Rest: {ex.rest}</p>
                             </div>
                             <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                              <p style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--clr-primary)' }}>{ex.sets} × {ex.reps}</p>
+                              <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--clr-text-main)', padding: '0.2rem 0.6rem', borderRadius: '20px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', whiteSpace: 'nowrap' }}>{ex.sets} × {ex.reps}</span>
                             </div>
                           </div>
                         ))}
@@ -467,87 +464,42 @@ const MemberView: React.FC = () => {
               )}
             </div>
 
-            <div className="glass-panel" style={{ position: 'relative', padding: 'var(--sp-lg)', height: 'fit-content', minHeight: '300px', background: `url('https://images.unsplash.com/photo-1495521821757-a1efb6729352?w=500&h=300&fit=crop')`, backgroundSize: 'cover', backgroundPosition: 'center', color: '#fff', overflow: 'hidden' }}>
-              {/* Darker overlay for better readability */}
-              <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', zIndex: 0, borderRadius: 'inherit' }} />
-              <div style={{ position: 'relative', zIndex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-                  <div className="stat-icon" style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#fff', width: '40px', height: '40px', flexShrink: 0 }}>
-                    <Utensils size={20} />
-                  </div>
-                  <h2 style={{ fontSize: '1.25rem', color: '#fff', fontWeight: 800 }}>My Diet Plan</h2>
+            <div className="glass-panel" style={{ position: 'relative', overflow: 'hidden', padding: 'var(--sp-lg)', height: 'fit-content', minHeight: '300px', background: 'linear-gradient(160deg, rgba(16, 185, 129, 0.07) 0%, rgba(30, 32, 44, 0.5) 100%)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', border: '1px solid var(--clr-glass-border)' }}>
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: 'var(--clr-success)' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div className="stat-icon" style={{ background: 'var(--clr-success)', color: '#fff', width: '40px', height: '40px', flexShrink: 0, boxShadow: '0 4px 14px var(--clr-success-glow)' }}>
+                  <Utensils size={20} />
                 </div>
-                {!diet ? <p className="text-muted" style={{ color: '#e5e7eb' }}>No diet assigned yet.</p> : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', background: 'rgba(0,0,0,0.3)', padding: '0.75rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                      <h3 style={{ color: '#fff', margin: 0 }}>{diet.name}</h3>
-                      <span className="status-badge active" style={{ fontSize: '0.8rem', background: 'var(--clr-success)', color: '#fff', fontWeight: 700 }}>{diet.calories} kcal</span>
-                    </div>
-                    {(['breakfast', 'lunch', 'dinner', 'snacks'] as const).map((meal) => (
-                      <div key={meal} className="glass-panel" style={{ padding: '1.25rem', background: '#ffffff', color: '#111827', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.2)' }}>
-                        <h4 style={{ textTransform: 'capitalize', marginBottom: '1rem', color: '#059669', borderBottom: '2px solid #ecfdf5', paddingBottom: '0.5rem', fontWeight: 800, fontSize: '1.1rem' }}>{meal}</h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                          {mealItems(meal).map((item: any, i: number) => (
-                            <div key={i} style={{ padding: '0.5rem 0', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
-                              <p style={{ fontSize: '0.95rem', wordBreak: 'break-word', color: '#374151', fontWeight: 600 }}>{item.foodName}</p>
-                              <p style={{ fontSize: '0.9rem', textAlign: 'right', flexShrink: 0, color: '#6b7280', fontWeight: 500 }}>{item.quantity}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
+                <div style={{ minWidth: 0 }}>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>My Diet Plan</h2>
+                  {diet && <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '0.15rem' }}>4 meals per day</p>}
+                </div>
+              </div>
+              {!diet ? <p className="text-muted">No diet assigned yet.</p> : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '0.75rem 1rem', borderRadius: 'var(--border-radius-md)', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+                    <span style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--clr-text-main)', wordBreak: 'break-word' }}>{diet.name}</span>
+                    <span className="status-badge active" style={{ fontSize: '0.75rem', fontWeight: 700, flexShrink: 0 }}>{diet.calories} kcal</span>
                   </div>
-                )}
-              </div>
+                  {(['breakfast', 'lunch', 'dinner', 'snacks'] as const).map((meal, i) => (
+                    <div key={meal} style={{ padding: '1rem', borderRadius: 'var(--border-radius-md)', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--clr-glass-border)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '50%', background: 'var(--clr-success)', color: '#fff', fontSize: '0.7rem', fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+                        <h4 style={{ textTransform: 'capitalize', color: 'var(--clr-success)', fontWeight: 600, fontSize: '1rem', margin: 0 }}>{meal}</h4>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {mealItems(meal).map((item: any, j: number) => (
+                          <div key={j} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', padding: '0.6rem 0.75rem', borderRadius: 'var(--border-radius-sm)', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                            <p style={{ fontSize: '0.9rem', wordBreak: 'break-word', color: 'var(--clr-text-main)', fontWeight: 600, margin: 0 }}>{item.foodName}</p>
+                            <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--clr-text-muted)', flexShrink: 0 }}>{item.quantity}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-
-          <div className="glass-panel" style={{ padding: 'var(--sp-lg)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-              <div className="stat-icon" style={{ background: 'rgba(245, 158, 11, 0.1)', color: 'var(--clr-warning)', width: '40px', height: '40px' }}>
-                <CreditCard size={20} />
-              </div>
-              <h2 style={{ fontSize: '1.25rem' }}>Payment History</h2>
-            </div>
-            {payments.length === 0 ? (
-              <p className="text-muted">No payment records found.</p>
-            ) : (
-              <div className="table-container" style={{ marginTop: 0, border: 'none', background: 'transparent' }}>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Plan</th>
-                      <th>Amount</th>
-                      <th>Date</th>
-                      <th>Status</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {payments.map((pay: any) => (
-                      <tr key={pay._id}>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{pay.plan?.name || 'Manual Payment'}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--clr-text-muted)' }}>INV-{pay._id.slice(-6).toUpperCase()}</div>
-                        </td>
-                        <td><span style={{ fontWeight: 700 }}>₹{pay.amount}</span></td>
-                        <td>{new Date(pay.date || pay.createdAt).toLocaleDateString('en-IN')}</td>
-                        <td>
-                          <span className={`status-badge ${pay.status === 'paid' ? 'active' : pay.status === 'pending' ? 'pending' : 'inactive'}`}>
-                            {pay.status}
-                          </span>
-                        </td>
-                        <td>
-                          <button className="btn-icon" title="View Invoice">
-                            <FileText size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
         </>
       ) : (

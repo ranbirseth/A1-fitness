@@ -28,24 +28,17 @@ const getStats = asyncHandler(async (req, res) => {
   const paymentMatch = {
     gymId: req.gymId,
     status: "paid",
-    ...(activeBranch ? {
-      $or: [
-        { branchCode: activeBranch },
-        { member: { $in: memberIdsInBranch } }
-      ]
-    } : {})
+    // Scope by the member's CURRENT branch so a reassigned member's payments
+    // follow them instead of leaking into the old branch's dashboard.
+    ...(activeBranch ? { member: { $in: memberIdsInBranch } } : {})
   };
 
   const attendanceMatch = {
     gymId: req.gymId,
     deletedAt: null,
     checkIn: { $gte: startOfDay, $lte: endOfDay },
-    ...(activeBranch ? {
-      $or: [
-        { branchCode: activeBranch },
-        { member: { $in: memberIdsInBranch } }
-      ]
-    } : {})
+    // Scope by the member's CURRENT branch (every attendance is member-linked).
+    ...(activeBranch ? { member: { $in: memberIdsInBranch } } : {})
   };
 
   const [totalMembers, activePlans, revenueObj, activeTrainers, attendanceToday, revenueAnalytics, recentActivities] = await Promise.all([
@@ -77,7 +70,7 @@ const getStats = asyncHandler(async (req, res) => {
     Promise.all([
       Member.find({ gymId: req.gymId, ...branchFilter }).sort({ createdAt: -1 }).limit(3).populate("user", "name"),
       Payment.find(paymentMatch).sort({ createdAt: -1 }).limit(3).populate({ path: "member", populate: { path: "user", select: "name" } }),
-      Attendance.find({ gymId: req.gymId, deletedAt: null, ...(activeBranch ? { $or: [{ branchCode: activeBranch }, { member: { $in: memberIdsInBranch } }] } : {}) }).sort({ checkIn: -1 }).limit(3).populate({ path: "member", populate: { path: "user", select: "name" } })
+      Attendance.find({ gymId: req.gymId, deletedAt: null, ...(activeBranch ? { member: { $in: memberIdsInBranch } } : {}) }).sort({ checkIn: -1 }).limit(3).populate({ path: "member", populate: { path: "user", select: "name" } })
     ])
   ]);
 

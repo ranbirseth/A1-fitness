@@ -229,11 +229,13 @@ const memberCheckIn = asyncHandler(async (req, res) => {
   const checkInHour = serverTime.getHours();
   const isLate = checkInHour >= LATE_THRESHOLD_HOUR;
 
-  const geoValidation = validateGeofence(latitude, longitude);
-  if (!geoValidation.valid) {
-    console.log(`[Geofence Rejected] Member: ${req.user.name} attempted check-in from ${geoValidation.distance}m away.`);
-    throw new AppError(geoValidation.message, 400);
-  }
+  // Geofence disabled for Member self check-in (current phase).
+  // To re-enable in a future feature, restore this validation:
+  // const geoValidation = validateGeofence(latitude, longitude);
+  // if (!geoValidation.valid) {
+  //   console.log(`[Geofence Rejected] Member: ${req.user.name} attempted check-in from ${geoValidation.distance}m away.`);
+  //   throw new AppError(geoValidation.message, 400);
+  // }
 
   const attendance = await Attendance.create({
     gymId: req.gymId,
@@ -401,6 +403,61 @@ const getTodayStatus = asyncHandler(async (req, res) => {
   });
 });
 
+const ATTENDED_STATUSES = ["present", "completed", "late", "half-day"];
+
+const calculateWorkoutStats = async (memberId, startDate, endDate) => {
+  const monthRecords = await Attendance.find({
+    member: memberId,
+    date: { $gte: startDate, $lte: endDate },
+    deletedAt: null
+  });
+
+  const totalRecords = monthRecords.length;
+  const sessions = monthRecords.filter(r => ATTENDED_STATUSES.includes(r.status)).length;
+  const sessionRate = totalRecords > 0 ? Math.round((sessions / totalRecords) * 100) : 0;
+
+  let durationSum = 0;
+  let durationCount = 0;
+  for (const r of monthRecords) {
+    if (r.checkIn && r.checkOut) {
+      const ms = new Date(r.checkOut) - new Date(r.checkIn);
+      if (ms > 0) {
+        durationSum += ms;
+        durationCount++;
+      }
+    }
+  }
+  const avgSessionMinutes = durationCount > 0 ? Math.round(durationSum / durationCount / 60000) : null;
+
+  const attendedDates = new Set(
+    (await Attendance.find({
+      member: memberId,
+      deletedAt: null,
+      status: { $in: ATTENDED_STATUSES }
+    }).select("date")).map(r => r.date)
+  );
+
+  let streak = 0;
+  if (attendedDates.size > 0) {
+    const cursor = new Date();
+    cursor.setHours(0, 0, 0, 0);
+    const todayStr = cursor.toISOString().split("T")[0];
+    if (!attendedDates.has(todayStr)) cursor.setDate(cursor.getDate() - 1);
+
+    for (let i = 0; i < 366; i++) {
+      const dayStr = cursor.toISOString().split("T")[0];
+      if (attendedDates.has(dayStr)) {
+        streak++;
+        cursor.setDate(cursor.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+  }
+
+  return { sessions, sessionRate, sessionStreak: streak, avgSessionMinutes, totalRecords };
+};
+
 const getMyStats = asyncHandler(async (req, res) => {
   if (req.user.role !== "member") {
     throw new AppError("Only members can access their own attendance stats", 403);
@@ -422,6 +479,8 @@ const getMyStats = asyncHandler(async (req, res) => {
   const currentStreak = await calculateCurrentStreak(member._id);
   const longestStreak = await calculateLongestStreak(member._id);
 
+  const workoutStats = await calculateWorkoutStats(member._id, startDate, endDate);
+
   const dailyBreakdown = await getDailyBreakdown(member._id, startDate, endDate);
 
   sendResponse(res, {
@@ -431,6 +490,10 @@ const getMyStats = asyncHandler(async (req, res) => {
       currentStreak,
       longestStreak,
       dailyBreakdown,
+      sessions: workoutStats.sessions,
+      sessionRate: workoutStats.sessionRate,
+      sessionStreak: workoutStats.sessionStreak,
+      avgSessionMinutes: workoutStats.avgSessionMinutes,
       month: targetMonth,
       year: targetYear
     }
@@ -699,13 +762,19 @@ const history = asyncHandler(async (req, res) => {
 
   const query = { gymId: req.gymId, deletedAt: null };
   if (date) query.date = date;
+  const scopeConditions = [];
 
   const requestedBranch = req.user && req.user.role !== "superadmin"
     ? (req.user.branchCode || "MAIN").trim().toUpperCase()
     : (req.query.branchCode && req.query.branchCode !== "ALL" && req.query.branchCode !== "all" ? req.query.branchCode.trim().toUpperCase() : undefined);
 
   if (requestedBranch) {
-    query.branchCode = requestedBranch;
+    // Attendance records are always member-linked. Scope by the member's CURRENT
+    // branch (not the stored historical branchCode) so a member reassigned to
+    // another branch has their attendance follow them instead of leaking into
+    // the old branch's history.
+    const branchMemberIds = await Member.find({ gymId: req.gymId, branchCode: requestedBranch }).distinct("_id");
+    scopeConditions.push({ member: { $in: branchMemberIds } });
   }
 
   if (search) {
@@ -715,7 +784,11 @@ const history = asyncHandler(async (req, res) => {
       { $match: { "userDoc.name": new RegExp(search, "i") } }
     ]);
     const searchMemberIds = members.map(m => m._id);
-    query.member = { $in: searchMemberIds };
+    scopeConditions.push({ member: { $in: searchMemberIds } });
+  }
+
+  if (scopeConditions.length > 0) {
+    query.$and = query.$and ? [...query.$and, ...scopeConditions] : scopeConditions;
   }
 
   const [items, total] = await Promise.all([

@@ -98,6 +98,20 @@ const STATUS_LABELS: Record<string, string> = {
   absent: "Absent",
 };
 
+const formatDuration = (days: number | undefined): string => {
+  const d = Number(days);
+  if (!Number.isFinite(d) || d <= 0) return "N/A";
+  if (d % 365 === 0) {
+    const n = d / 365;
+    return n === 1 ? "1 Year" : `${n} Years`;
+  }
+  if (d % 30 === 0) {
+    const n = d / 30;
+    return n === 1 ? "1 Month" : `${n} Months`;
+  }
+  return d === 1 ? "1 Day" : `${d} Days`;
+};
+
 const MemberAttendancePage: React.FC = () => {
   const { user, gymId } = useAuthStore();
 
@@ -415,7 +429,7 @@ const MemberAttendancePage: React.FC = () => {
             </div>
             <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
               <p className="text-muted" style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>Duration</p>
-              <p style={{ fontWeight: 600, fontSize: '0.95rem' }}>{profile.currentPlan.durationType}</p>
+              <p style={{ fontWeight: 600, fontSize: '0.95rem' }}>{formatDuration(profile.currentPlan.duration)}</p>
             </div>
             <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
               <p className="text-muted" style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>Start Date</p>

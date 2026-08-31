@@ -26,7 +26,7 @@ router.get("/search", authorize("view_member"), searchMembers);
 router.post("/", authorize("create_member"), upload.single("photo"), createMember);
 router.get("/profile/me", authorize("member"), getMyProfile);
 router.patch("/profile/me", authorize("member"), upload.single("photo"), updateMyProfile);
-router.get("/:id", authorize("view_member", "member"), getMember);
+router.get("/:id", getMember);
 router.put("/:id", authorize("update_member"), upload.single("photo"), updateMember);
 router.delete("/:id", authorize("delete_member"), deleteMember);
 router.patch("/:id/assign-plan", authorize("manage_plans"), assignPlan);

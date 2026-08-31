@@ -149,12 +149,10 @@ const listPayments = asyncHandler(async (req, res) => {
   }
   if (requestedBranch) {
     const memberIds = await Member.find({ gymId, branchCode: requestedBranch }).distinct("_id");
-    conditions.push({
-      $or: [
-        { branchCode: requestedBranch },
-        { member: { $in: memberIds } }
-      ]
-    });
+    // Payments follow their member's CURRENT branch. Scoping by the payment's
+    // stored branchCode instead would let a member reassigned to another branch
+    // leak their historical payments into the old branch's list.
+    conditions.push({ member: { $in: memberIds } });
   }
   if (businessStatus && businessStatus !== "all") {
     const bucketMemberIds = await resolveBusinessStatusMemberIds({
@@ -216,10 +214,9 @@ const pendingDues = asyncHandler(async (req, res) => {
   const requestedBranch = resolveRequestedBranch(req);
   if (requestedBranch) {
     const memberIds = await Member.find({ gymId: req.gymId, branchCode: requestedBranch }).distinct("_id");
-    filter.$or = [
-      { branchCode: requestedBranch },
-      { member: { $in: memberIds } }
-    ];
+    // Scope pending dues by the member's CURRENT branch so a reassigned member's
+    // stale payment no longer leaks into the old branch.
+    filter.member = { $in: memberIds };
   }
 
   const [items, total] = await Promise.all([

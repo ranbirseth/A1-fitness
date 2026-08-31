@@ -177,8 +177,34 @@ const fetchMembers = async (req, query, gymId) => {
         paymentStatus: 1,
         secretCode: 1,
         createdAt: 1,
-        user: "$userDoc",
-        trainer: { $arrayElemAt: ["$trainerDoc", 0] },
+        user: {
+          _id: "$userDoc._id",
+          gymId: "$userDoc.gymId",
+          branchCode: "$userDoc.branchCode",
+          name: "$userDoc.name",
+          email: "$userDoc.email",
+          phone: "$userDoc.phone",
+          role: "$userDoc.role",
+          photo: "$userDoc.photo",
+          status: "$userDoc.status",
+          specialty: "$userDoc.specialty",
+          address: "$userDoc.address",
+          emergencyContact: "$userDoc.emergencyContact",
+          createdAt: "$userDoc.createdAt",
+          updatedAt: "$userDoc.updatedAt"
+        },
+        trainer: {
+          _id: { $arrayElemAt: ["$trainerDoc._id", 0] },
+          gymId: { $arrayElemAt: ["$trainerDoc.gymId", 0] },
+          branchCode: { $arrayElemAt: ["$trainerDoc.branchCode", 0] },
+          name: { $arrayElemAt: ["$trainerDoc.name", 0] },
+          email: { $arrayElemAt: ["$trainerDoc.email", 0] },
+          phone: { $arrayElemAt: ["$trainerDoc.phone", 0] },
+          role: { $arrayElemAt: ["$trainerDoc.role", 0] },
+          photo: { $arrayElemAt: ["$trainerDoc.photo", 0] },
+          status: { $arrayElemAt: ["$trainerDoc.status", 0] },
+          specialty: { $arrayElemAt: ["$trainerDoc.specialty", 0] }
+        },
         currentPlan: { $arrayElemAt: ["$planDoc", 0] }
       }
     }
@@ -200,9 +226,57 @@ const searchMembers = asyncHandler(async (req, res) => {
   sendResponse(res, { message: "Members search fetched", data });
 });
 
+// Fields that must NEVER be serialized out of a User document in API responses.
+const SENSITIVE_USER_FIELDS = "-password -refreshTokens -resetPasswordToken -resetPasswordExpire";
+
+// Staff roles that may read other members' records given the view_member permission.
+const canReadOtherMembers = (req) => {
+  if (!req.user) return false;
+  if (req.user.role === "superadmin") return true;
+  const rolePermissions = {
+    admin: [
+      "create_workout", "assign_workout", "delete_workout", "view_workout",
+      "create_diet", "assign_diet", "delete_diet", "view_diet",
+      "create_member", "delete_member", "update_member", "view_member", "approve_member",
+      "manage_plans", "view_payments", "manage_payments"
+    ],
+    trainer: [
+      "create_workout", "assign_workout", "view_workout", "delete_workout",
+      "create_diet", "assign_diet", "view_diet", "delete_diet",
+      "create_member", "delete_member", "update_member", "view_member", "approve_member", "manage_plans"
+    ]
+  };
+  return (rolePermissions[req.user.role] || []).includes("view_member");
+};
+
 const getMember = asyncHandler(async (req, res) => {
-  const member = await Member.findOne({ _id: req.params.id, gymId: req.gymId }).populate("user trainer currentPlan");
+  // MEMBER role: strictly self-only access. A member must never be able to
+  // request another member's record, even within the same branch.
+  if (req.user && req.user.role === "member") {
+    if (!req.member) throw Object.assign(new Error("Member profile not found"), { statusCode: 404 });
+    // Reject any request for a record that is not the authenticated member.
+    if (String(req.params.id) !== String(req.member._id)) {
+      throw Object.assign(new Error("Member not found"), { statusCode: 404 });
+    }
+    const selfMember = await Member.findById(req.member._id)
+      .populate("user", SENSITIVE_USER_FIELDS)
+      .populate("trainer", SENSITIVE_USER_FIELDS)
+      .populate("currentPlan");
+    if (!selfMember) throw Object.assign(new Error("Member profile not found"), { statusCode: 404 });
+    return sendResponse(res, { message: "Member fetched", data: selfMember });
+  }
+
+  // STAFF (admin/trainer): must hold view_member permission.
+  if (!canReadOtherMembers(req)) {
+    throw Object.assign(new Error("Forbidden: Insufficient permissions"), { statusCode: 403 });
+  }
+
+  const member = await Member.findOne({ _id: req.params.id, gymId: req.gymId })
+    .populate("user", SENSITIVE_USER_FIELDS)
+    .populate("trainer", SENSITIVE_USER_FIELDS)
+    .populate("currentPlan");
   if (!member) throw Object.assign(new Error("Member not found in your gym"), { statusCode: 404 });
+  // Branch ownership: admin/trainer can only access members in their own branch.
   if (!enforceBranchOwnership(member.branchCode, req)) {
     throw Object.assign(new Error("Member not found in your branch"), { statusCode: 404 });
   }
@@ -473,7 +547,10 @@ const resumePlan = asyncHandler(async (req, res) => {
 });
 
 const getMyProfile = asyncHandler(async (req, res) => {
-  const member = await Member.findOne({ user: req.user._id, gymId: req.gymId }).populate("user trainer currentPlan");
+  const member = await Member.findOne({ user: req.user._id, gymId: req.gymId })
+    .populate("user", SENSITIVE_USER_FIELDS)
+    .populate("trainer", SENSITIVE_USER_FIELDS)
+    .populate("currentPlan");
   if (!member) throw Object.assign(new Error("Member profile not found"), { statusCode: 404 });
   sendResponse(res, { message: "Profile fetched", data: member });
 });
@@ -485,7 +562,10 @@ const updateMyProfile = asyncHandler(async (req, res) => {
   });
   if (req.file) payload.photo = `/uploads/${req.file.filename}`;
   await User.findByIdAndUpdate(req.user._id, payload);
-  const member = await Member.findOne({ user: req.user._id, gymId: req.gymId }).populate("user trainer currentPlan");
+  const member = await Member.findOne({ user: req.user._id, gymId: req.gymId })
+    .populate("user", SENSITIVE_USER_FIELDS)
+    .populate("trainer", SENSITIVE_USER_FIELDS)
+    .populate("currentPlan");
   sendResponse(res, { message: "Profile updated", data: member });
 });
 

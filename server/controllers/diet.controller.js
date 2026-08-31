@@ -4,6 +4,7 @@ const Member = require("../models/member.model");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { sendResponse } = require("../utils/response");
 const { AppError } = require("../utils/appError");
+const { enforceBranchOwnership } = require("../middlewares/branchScope.middleware");
 const {
   normalizeBranchCodes,
   assertBranchesExist,
@@ -286,6 +287,13 @@ const assignDietToMember = asyncHandler(async (req, res) => {
 
   const member = await Member.findOne({ _id: memberId, gymId: req.gymId });
   if (!member) throw new AppError("Member not found", 404);
+
+  // Branch isolation: non-superadmins (trainers, branch admins) may only
+  // assign diets to members in their OWN branch. Branch is derived from the
+  // authenticated user, never from client-supplied branchCode.
+  if (req.user && req.user.role !== "superadmin" && !enforceBranchOwnership(member.branchCode, req)) {
+    throw new AppError("Member not found in your branch", 404);
+  }
 
   const memberBranch = (member.branchCode || "MAIN").trim().toUpperCase();
 
