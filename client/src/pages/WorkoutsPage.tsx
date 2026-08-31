@@ -10,6 +10,20 @@ import { useAuthStore } from '../store/auth.store';
 import { useSocket } from '../hooks/useSocket';
 import Modal from '../components/Modal';
 
+const formatDuration = (days: number | undefined): string => {
+  const d = Number(days);
+  if (!Number.isFinite(d) || d <= 0) return "N/A";
+  if (d % 365 === 0) {
+    const n = d / 365;
+    return n === 1 ? "1 Year" : `${n} Years`;
+  }
+  if (d % 30 === 0) {
+    const n = d / 30;
+    return n === 1 ? "1 Month" : `${n} Months`;
+  }
+  return d === 1 ? "1 Day" : `${d} Days`;
+};
+
 const MemberView: React.FC = () => {
   const { user } = useAuthStore();
   const [workout, setWorkout] = useState<any>(null);
@@ -301,7 +315,7 @@ const MemberView: React.FC = () => {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                       <div>
                         <p className="text-muted" style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Duration</p>
-                        <p style={{ fontWeight: 600, fontSize: '0.9rem' }}>{profile.currentPlan.durationType}</p>
+                        <p style={{ fontWeight: 600, fontSize: '0.9rem' }}>{formatDuration(profile.currentPlan.duration)}</p>
                       </div>
                       <div>
                         <p className="text-muted" style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Price</p>
