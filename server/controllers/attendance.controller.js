@@ -73,6 +73,12 @@ const markAttendance = asyncHandler(async (req, res) => {
       if (userBranch !== memBranch) {
         throw new AppError("Member not found in your branch", 404);
       }
+      // Trainer isolation: trainers may only mark attendance for their assigned members.
+      if (req.user.role === "trainer") {
+        if (!member.trainer || String(member.trainer) !== String(req.user._id)) {
+          throw new AppError("You can only mark attendance for members assigned to you", 403);
+        }
+      }
     } else if (requestedBranchCode) {
       const validatedBranch = requestedBranchCode.trim().toUpperCase();
       const memBranch = (member.branchCode || "MAIN").trim().toUpperCase();
@@ -773,7 +779,12 @@ const history = asyncHandler(async (req, res) => {
     // branch (not the stored historical branchCode) so a member reassigned to
     // another branch has their attendance follow them instead of leaking into
     // the old branch's history.
-    const branchMemberIds = await Member.find({ gymId: req.gymId, branchCode: requestedBranch }).distinct("_id");
+    const memberQuery = { gymId: req.gymId, branchCode: requestedBranch };
+    // Trainer isolation: trainers only see attendance for their assigned members.
+    if (req.user && req.user.role === "trainer") {
+      memberQuery.trainer = req.user._id;
+    }
+    const branchMemberIds = await Member.find(memberQuery).distinct("_id");
     scopeConditions.push({ member: { $in: branchMemberIds } });
   }
 
@@ -815,6 +826,12 @@ const checkIn = asyncHandler(async (req, res) => {
     if (userBranch !== memBranch) {
       throw new AppError("Member not found in your branch", 404);
     }
+    // Trainer isolation: trainers may only check-in their assigned members.
+    if (req.user.role === "trainer") {
+      if (!member.trainer || String(member.trainer) !== String(req.user._id)) {
+        throw new AppError("You can only check-in members assigned to you", 403);
+      }
+    }
   } else if (req.user && req.user.role === "superadmin" && req.body.branchCode) {
     const validatedBranch = req.body.branchCode.trim().toUpperCase();
     const memBranch = (member.branchCode || "MAIN").trim().toUpperCase();
@@ -848,6 +865,13 @@ const checkOut = asyncHandler(async (req, res) => {
     const attBranch = (entry.branchCode || entry.member?.branchCode || "MAIN").trim().toUpperCase();
     if (userBranch !== attBranch) {
       throw new AppError("Attendance record not found in your branch", 404);
+    }
+    // Trainer isolation: trainers may only check-out their assigned members.
+    if (req.user.role === "trainer") {
+      const member = entry.member;
+      if (!member || !member.trainer || String(member.trainer) !== String(req.user._id)) {
+        throw new AppError("You can only check-out members assigned to you", 403);
+      }
     }
   }
 

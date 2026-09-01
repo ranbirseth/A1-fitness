@@ -42,6 +42,13 @@ const DEV_MEMBER = {
 };
 
 const seedData = async () => {
+  // Never inject a demo Default Admin once the database has been initialized
+  // (a Super Admin already exists). This keeps a reset database truly empty.
+  if (await User.exists({ role: "superadmin" })) {
+    console.log("Super Admin exists. Skipping Default Admin demo seeding.");
+    return;
+  }
+
   const adminExists = await User.exists({ role: "admin" });
 
   if (adminExists) {
@@ -81,6 +88,11 @@ const ensureDevSuperadmin = async () => {
 
 const ensureDevTrainer = async () => {
   if (process.env.NODE_ENV === "production" || process.env.RENDER) return;
+  // Skip demo seeding once the DB is initialized (Super Admin exists).
+  if (await User.exists({ role: "superadmin" })) {
+    console.log("Super Admin exists. Skipping dev Trainer demo seeding.");
+    return;
+  }
   if (await User.exists({ role: "trainer" })) return;
   try {
     await User.create(DEV_TRAINER);
@@ -92,6 +104,11 @@ const ensureDevTrainer = async () => {
 
 const ensureDevMember = async () => {
   if (process.env.NODE_ENV === "production" || process.env.RENDER) return;
+  // Skip demo seeding once the DB is initialized (Super Admin exists).
+  if (await User.exists({ role: "superadmin" })) {
+    console.log("Super Admin exists. Skipping dev Member demo seeding.");
+    return;
+  }
   if (await User.exists({ email: DEV_MEMBER.email, gymId: DEV_MEMBER.gymId })) return;
   try {
     const user = await User.create(DEV_MEMBER);

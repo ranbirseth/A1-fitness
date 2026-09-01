@@ -89,8 +89,8 @@ const QRAttendancePage: React.FC = () => {
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginBottom: '2rem', gap: '1rem' }}>
           <img 
-            src="https://res.cloudinary.com/dyc33dchn/image/upload/q_auto/f_auto/v1776476678/WhatsApp_Image_2026-04-15_at_10.11.03_PM_2_jvuq84.jpg" 
-            alt="RUDRA FITNESS" 
+            src="/logo.svg" 
+            alt="A1 FITNESS" 
             style={{ 
               width: '80px',
               height: '80px',
@@ -108,7 +108,7 @@ const QRAttendancePage: React.FC = () => {
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
             filter: 'drop-shadow(0 2px 4px rgba(139, 92, 246, 0.15))'
-          }}>A1 fitness</span>
+          }}>A1 FITNESS</span>
         </div>
 
         <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', fontWeight: 700 }}>Mark Attendance</h2>

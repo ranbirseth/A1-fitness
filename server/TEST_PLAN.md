@@ -1,6 +1,6 @@
 Purpose
 
-This document lists manual and automated test cases to validate the Gymza backend auth, seeding, and member workflows before handing the app to your client.
+This document lists manual and automated test cases to validate the A1 Fitness backend auth, seeding, and member workflows before handing the app to your client.
 
 What this covers
 
@@ -30,7 +30,7 @@ Test data and credentials
 - Default Admin (seeded if no admin exists):
   - Gym ID: `MAIN`
   - Email: `shivadas01635@gmail.com`
-  - Password: `rudra2026`
+  - Password: `a1fitness2026`
 
 Manual test checklist
 
@@ -50,7 +50,7 @@ Manual test checklist
 
     curl -X POST http://localhost:5000/api/auth/login \
       -H "Content-Type: application/json" \
-      -d '{"gymId":"MAIN","email":"shivadas01635@gmail.com","password":"rudra2026"}'
+      -d '{"gymId":"MAIN","email":"shivadas01635@gmail.com","password":"a1fitness2026"}'
 
 - Expected:
   - Receive `accessToken` and `refreshToken` cookie

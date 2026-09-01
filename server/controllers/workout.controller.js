@@ -294,6 +294,12 @@ const assignWorkoutToMember = asyncHandler(async (req, res) => {
   if (req.user && req.user.role !== "superadmin" && !enforceBranchOwnership(member.branchCode, req)) {
     throw new AppError("Member not found in your branch", 404);
   }
+  // Trainer isolation: trainers may only assign workouts to their assigned members.
+  if (req.user && req.user.role === "trainer") {
+    if (!member.trainer || String(member.trainer) !== String(req.user._id)) {
+      throw new AppError("You can only assign workouts to members assigned to you", 403);
+    }
+  }
 
   const memberBranch = (member.branchCode || "MAIN").trim().toUpperCase();
 

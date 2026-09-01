@@ -109,6 +109,10 @@ const getReportOverview = asyncHandler(async (req, res) => {
   if (filters.branchCode) memberBaseMatch.branchCode = filters.branchCode;
   if (filters.memberStatus) memberBaseMatch.status = filters.memberStatus;
   if (filters.planId) memberBaseMatch.currentPlan = new mongoose.Types.ObjectId(filters.planId);
+  // Trainer isolation: trainers only see analytics for their assigned members.
+  if (req.user && req.user.role === "trainer") {
+    memberBaseMatch.trainer = req.user._id;
+  }
 
   const paymentsPipeline = [
     filters.branchCode
@@ -357,7 +361,7 @@ const getFilterOptions = asyncHandler(async (req, res) => {
   const [plans, branches, memberStatuses, paymentStatuses, paymentMethods, attendanceStatuses] = await Promise.all([
     Plan.find(plansQuery).sort({ name: 1 }).select("name price duration branchCode").lean(),
     Branch.find(branchQuery).sort({ name: 1 }).select("name branchCode status").lean(),
-    Member.aggregate([{ $match: { gymId, ...(req.user?.role !== "superadmin" ? { branchCode: req.user.branchCode || "MAIN" } : {}) } }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
+    Member.aggregate([{ $match: { gymId, ...(req.user?.role !== "superadmin" ? { branchCode: req.user.branchCode || "MAIN" } : {}), ...(req.user?.role === "trainer" ? { trainer: req.user._id } : {}) } }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
     Payment.aggregate([{ $match: { gymId } }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
     Payment.aggregate([{ $match: { gymId } }, { $group: { _id: "$method", count: { $sum: 1 } } }]),
     Attendance.aggregate([{ $match: { gymId, deletedAt: null } }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
@@ -430,6 +434,10 @@ const getMembershipTable = asyncHandler(async (req, res) => {
   if (filters.branchCode) memberMatch.branchCode = filters.branchCode;
   if (filters.memberStatus) memberMatch.status = filters.memberStatus;
   if (filters.planId) memberMatch.currentPlan = new mongoose.Types.ObjectId(filters.planId);
+  // Trainer isolation: trainers only see membership data for their assigned members.
+  if (req.user && req.user.role === "trainer") {
+    memberMatch.trainer = req.user._id;
+  }
 
   const byPlan = await Member.aggregate([
     { $match: memberMatch },

@@ -548,12 +548,12 @@ const PaymentsPage: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', borderBottom: '2px solid #eee', paddingBottom: '1rem', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                   <img 
-                    src="https://res.cloudinary.com/dyc33dchn/image/upload/q_auto/f_auto/v1776476678/WhatsApp_Image_2026-04-15_at_10.11.03_PM_2_jvuq84.jpg" 
-                    alt="RUDRA FITNESS" 
+                    src="/logo.svg" 
+                    alt="A1 FITNESS" 
                     style={{ width: '50px', height: '50px', borderRadius: '12px', objectFit: 'cover' }}
                   />
                   <div>
-                    <h2 style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', marginBottom: '0.25rem', fontSize: '1.4rem', fontFamily: '"Bebas Neue", sans-serif', fontWeight: '700', letterSpacing: '0.1em', margin: 0 }}>RUDRA FITNESS</h2>
+                    <h2 style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', marginBottom: '0.25rem', fontSize: '1.4rem', fontFamily: '"Bebas Neue", sans-serif', fontWeight: '700', letterSpacing: '0.1em', margin: 0 }}>A1 FITNESS</h2>
                     <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>Premium Fitness Center</p>
                   </div>
                 </div>
@@ -944,12 +944,12 @@ const PaymentsPage: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', borderBottom: '2px solid #eee', paddingBottom: '1rem', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                 <img 
-                  src="https://res.cloudinary.com/dyc33dchn/image/upload/q_auto/f_auto/v1776476678/WhatsApp_Image_2026-04-15_at_10.11.03_PM_2_jvuq84.jpg" 
-                  alt="RUDRA FITNESS" 
+                  src="/logo.svg" 
+                  alt="A1 FITNESS" 
                   style={{ width: '50px', height: '50px', borderRadius: '12px', objectFit: 'cover' }}
                 />
                 <div>
-                  <h2 style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', marginBottom: '0.25rem', fontSize: '1.4rem', fontFamily: '"Bebas Neue", sans-serif', fontWeight: '700', letterSpacing: '0.1em', margin: 0 }}>RUDRA FITNESS</h2>
+                  <h2 style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', marginBottom: '0.25rem', fontSize: '1.4rem', fontFamily: '"Bebas Neue", sans-serif', fontWeight: '700', letterSpacing: '0.1em', margin: 0 }}>A1 FITNESS</h2>
                   <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>Premium Fitness Center</p>
                 </div>
               </div>

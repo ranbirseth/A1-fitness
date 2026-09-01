@@ -2,7 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { login } from "../features/auth/auth.api";
-import { useAuthStore } from "../store/auth.store";
+import { useAuthStore, setRemember } from "../store/auth.store";
 import http from "../api/http";
 import { Mail, Lock, Eye, EyeOff } from "lucide-react";
 const animationStyles = `
@@ -34,7 +34,7 @@ const animationStyles = `
   @media (max-width: 1023px) {
     .login-page {
       background-image: linear-gradient(135deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.3) 100%), 
-                        url('https://m.gettywallpapers.com/wp-content/uploads/2022/07/Gym-Exercise-Wallpaper.jpg') !important;
+                        url('https://res.cloudinary.com/dyc33dchn/image/upload/v1788244567/ChatGPT_Image_Sep_1_2026_12_05_48_PM_qdwhfr.png') !important;
       background-size: cover !important;
       background-position: center !important;
       background-attachment: fixed !important;
@@ -44,7 +44,7 @@ const animationStyles = `
 
     html .login-page {
       background: linear-gradient(135deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.3) 100%), 
-                  url('https://m.gettywallpapers.com/wp-content/uploads/2022/07/Gym-Exercise-Wallpaper.jpg') !important;
+                  url('https://res.cloudinary.com/dyc33dchn/image/upload/v1788244567/ChatGPT_Image_Sep_1_2026_12_05_48_PM_qdwhfr.png') !important;
       background-size: cover !important;
       background-position: center !important;
       background-attachment: fixed !important;
@@ -169,10 +169,11 @@ const animationStyles = `
 export default function LoginPage() {
     const navigate = useNavigate();
     const { setAuth, gymId, setGymId, user } = useAuthStore();
-    const [email, setEmail] = useState("admin@gymza.com");
-    const [password, setPassword] = useState("Password123");
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
     const [role, setRole] = useState("member");
     const [showPassword, setShowPassword] = useState(false);
+    const [remember, setRememberState] = useState(false);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     React.useEffect(() => {
@@ -200,6 +201,7 @@ export default function LoginPage() {
         try {
             const { data } = await login({ gymId, email, password, role });
             const userData = data.data.user;
+            setRemember(remember);
             setAuth(userData, data.data.accessToken);
             if (userData.role === "member") {
                 if (userData.status === "pending") {
@@ -261,7 +263,7 @@ export default function LoginPage() {
                     justifyContent: 'center',
                     padding: '0.5rem 0rem 0.5rem 0rem',
                     zIndex: 1
-                }, children: _jsxs("div", { className: "glass-card", style: { padding: '3rem' }, children: [_jsxs("div", { className: "login-welcome text-center", style: { marginBottom: '2.5rem' }, children: [_jsx("img", { src: "https://5.imimg.com/data5/SELLER/Logo/2024/2/393834820/NH/UK/RN/70555942/a1-fitness.jpeg", alt: "A1 FITNESS", style: {
+                }, children: _jsxs("div", { className: "glass-card", style: { padding: '3rem' }, children: [_jsxs("div", { className: "login-welcome text-center", style: { marginBottom: '2.5rem' }, children: [_jsx("img", { src: "/logo.svg", alt: "A1 FITNESS", style: {
                                         width: '80px',
                                         height: '80px',
                                         borderRadius: '16px',
@@ -287,7 +289,7 @@ export default function LoginPage() {
                                         fontSize: '0.85rem',
                                         marginBottom: '1.5rem',
                                         border: '1px solid rgba(244, 63, 94, 0.2)'
-                                    }, children: error })), _jsxs("div", { className: "login-form-group form-group", children: [_jsx("label", { className: "form-label", children: "Gym ID" }), _jsx("div", { style: { position: 'relative' }, children: _jsx("input", { className: "form-input", value: gymId, onChange: (e) => setGymId(e.target.value), placeholder: "Enter Gym ID" }) })] }), _jsxs("div", { className: "login-form-group form-group", children: [_jsx("label", { className: "form-label", children: "Email Address" }), _jsxs("div", { style: { position: 'relative' }, children: [_jsx(Mail, { size: 18, style: { position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' } }), _jsx("input", { className: "form-input", style: { paddingLeft: '3rem' }, type: "email", value: email, onChange: (e) => setEmail(e.target.value), placeholder: "admin@gymza.com" })] })] }), _jsxs("div", { className: "login-form-group form-group", children: [_jsx("label", { className: "form-label", children: "Sign in as" }), _jsxs("select", { className: "form-input", value: role, onChange: (e) => setRole(e.target.value), children: [_jsx("option", { value: "member", children: "Member" }), _jsx("option", { value: "trainer", children: "Trainer" }), _jsx("option", { value: "admin", children: "Admin" }), _jsx("option", { value: "superadmin", children: "Superadmin" })] })] }), _jsxs("div", { className: "login-form-group form-group", children: [_jsx("label", { className: "form-label", children: "Password" }), _jsxs("div", { style: { position: 'relative' }, children: [_jsx(Lock, { size: 18, style: { position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' } }), _jsx("input", { className: "form-input", style: { paddingLeft: '3rem', paddingRight: '3rem' }, type: showPassword ? "text" : "password", value: password, onChange: (e) => setPassword(e.target.value), placeholder: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" }), _jsx("button", { type: "button", onClick: () => setShowPassword(!showPassword), style: { position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' }, children: showPassword ? _jsx(EyeOff, { size: 18 }) : _jsx(Eye, { size: 18 }) })] })] }), _jsxs("div", { className: "login-form-footer", style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }, children: [_jsxs("label", { style: { display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer' }, children: [_jsx("input", { type: "checkbox", style: { accentColor: 'var(--clr-primary)' } }), _jsx("span", { children: "Remember me" })] }), _jsx(Link, { to: "/forgot-password", style: { fontSize: '0.85rem', color: 'var(--clr-primary)', fontWeight: '600', textDecoration: 'none' }, children: "Forgot Password?" })] }), _jsx("button", { type: "submit", className: "login-button btn btn-primary w-full", style: { padding: '0.875rem' }, disabled: loading, children: loading ? 'Signing In...' : 'Sign In' })] }), _jsx("div", { className: "login-footer text-center", style: { marginTop: '2rem' }, children: _jsxs("p", { className: "text-muted", style: { fontSize: '0.9rem' }, children: ["Don't have an account? ", _jsx(Link, { to: "/signup", style: { color: 'var(--clr-primary)', fontWeight: '600' }, children: "Sign up" })] }) }), import.meta.env.DEV && (_jsxs("div", { style: { marginTop: '1.5rem', padding: '1rem', border: '1px dashed rgba(251, 191, 36, 0.4)', borderRadius: '8px', background: 'rgba(251, 191, 36, 0.05)' }, children: [_jsx("p", { style: { fontSize: '0.7rem', color: '#f59e0b', fontWeight: '700', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.08em' }, children: "Development Login \u2014 Remove before production" }), _jsx("div", { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }, children: ["superadmin", "admin", "trainer", "member"].map((r) => (_jsx("button", { type: "button", onClick: () => devLogin(r), disabled: loading, style: {
+                                    }, children: error })), _jsxs("div", { className: "login-form-group form-group", children: [_jsx("label", { className: "form-label", children: "Gym ID" }), _jsx("div", { style: { position: 'relative' }, children: _jsx("input", { className: "form-input", value: gymId, onChange: (e) => setGymId(e.target.value), placeholder: "Enter Gym ID" }) })] }), _jsxs("div", { className: "login-form-group form-group", children: [_jsx("label", { className: "form-label", children: "Email Address" }), _jsxs("div", { style: { position: 'relative' }, children: [_jsx(Mail, { size: 18, style: { position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' } }), _jsx("input", { className: "form-input", style: { paddingLeft: '3rem' }, type: "email", value: email, onChange: (e) => setEmail(e.target.value), placeholder: "Enter your email" })] })] }), _jsxs("div", { className: "login-form-group form-group", children: [_jsx("label", { className: "form-label", children: "Sign in as" }), _jsxs("select", { className: "form-input", value: role, onChange: (e) => setRole(e.target.value), children: [_jsx("option", { value: "member", children: "Member" }), _jsx("option", { value: "trainer", children: "Trainer" }), _jsx("option", { value: "admin", children: "Admin" }), _jsx("option", { value: "superadmin", children: "Superadmin" })] })] }), _jsxs("div", { className: "login-form-group form-group", children: [_jsx("label", { className: "form-label", children: "Password" }), _jsxs("div", { style: { position: 'relative' }, children: [_jsx(Lock, { size: 18, style: { position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' } }), _jsx("input", { className: "form-input", style: { paddingLeft: '3rem', paddingRight: '3rem' }, type: showPassword ? "text" : "password", value: password, onChange: (e) => setPassword(e.target.value), placeholder: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" }), _jsx("button", { type: "button", onClick: () => setShowPassword(!showPassword), style: { position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--clr-text-muted)' }, children: showPassword ? _jsx(EyeOff, { size: 18 }) : _jsx(Eye, { size: 18 }) })] })] }), _jsxs("div", { className: "login-form-footer", style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }, children: [_jsxs("label", { style: { display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer' }, children: [_jsx("input", { type: "checkbox", checked: remember, onChange: (e) => setRememberState(e.target.checked), style: { accentColor: 'var(--clr-primary)' } }), _jsx("span", { children: "Remember me" })] }), _jsx(Link, { to: "/forgot-password", style: { fontSize: '0.85rem', color: 'var(--clr-primary)', fontWeight: '600', textDecoration: 'none' }, children: "Forgot Password?" })] }), _jsx("button", { type: "submit", className: "login-button btn btn-primary w-full", style: { padding: '0.875rem' }, disabled: loading, children: loading ? 'Signing In...' : 'Sign In' })] }), _jsx("div", { className: "login-footer text-center", style: { marginTop: '2rem' }, children: _jsxs("p", { className: "text-muted", style: { fontSize: '0.9rem' }, children: ["Don't have an account? ", _jsx(Link, { to: "/signup", style: { color: 'var(--clr-primary)', fontWeight: '600' }, children: "Sign up" })] }) }), import.meta.env.DEV && (_jsxs("div", { style: { marginTop: '1.5rem', padding: '1rem', border: '1px dashed rgba(251, 191, 36, 0.4)', borderRadius: '8px', background: 'rgba(251, 191, 36, 0.05)' }, children: [_jsx("p", { style: { fontSize: '0.7rem', color: '#f59e0b', fontWeight: '700', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.08em' }, children: "Development Login \u2014 Remove before production" }), _jsx("div", { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }, children: ["superadmin", "admin", "trainer", "member"].map((r) => (_jsx("button", { type: "button", onClick: () => devLogin(r), disabled: loading, style: {
                                             padding: '0.45rem 0.5rem',
                                             borderRadius: '6px',
                                             border: '1px solid rgba(251, 191, 36, 0.3)',
@@ -298,5 +300,5 @@ export default function LoginPage() {
                                             cursor: loading ? 'not-allowed' : 'pointer',
                                             opacity: loading ? 0.5 : 1,
                                             textTransform: 'capitalize',
-                                        }, children: r }, r))) })] }))] }) }), _jsx("div", { className: "login-right", style: { flex: 1, position: 'relative' } })] }));
+                                        }, children: r }, r))) })] }))] }) }), _jsx("div", { className: "login-right", style: { flex: 1, position: 'relative', overflow: 'hidden' }, children: _jsx("img", { src: "https://res.cloudinary.com/dyc33dchn/image/upload/v1788244567/ChatGPT_Image_Sep_1_2026_12_05_48_PM_qdwhfr.png", alt: "A1 Fitness trainer coaching a premium workout session", style: { width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block' } }) })] }));
 }

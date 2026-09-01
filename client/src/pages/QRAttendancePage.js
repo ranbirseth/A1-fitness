@@ -69,7 +69,7 @@ const QRAttendancePage = () => {
                     textAlign: 'center',
                     position: 'relative',
                     zIndex: 1
-                }, children: [_jsxs("div", { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginBottom: '2rem', gap: '1rem' }, children: [_jsx("img", { src: "https://res.cloudinary.com/dyc33dchn/image/upload/q_auto/f_auto/v1776476678/WhatsApp_Image_2026-04-15_at_10.11.03_PM_2_jvuq84.jpg", alt: "RUDRA FITNESS", style: {
+                }, children: [_jsxs("div", { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginBottom: '2rem', gap: '1rem' }, children: [_jsx("img", { src: "/logo.svg", alt: "A1 FITNESS", style: {
                                     width: '80px',
                                     height: '80px',
                                     borderRadius: '16px',
@@ -84,7 +84,7 @@ const QRAttendancePage = () => {
                                     WebkitTextFillColor: 'transparent',
                                     backgroundClip: 'text',
                                     filter: 'drop-shadow(0 2px 4px rgba(139, 92, 246, 0.15))'
-                                }, children: "A1 fitness" })] }), _jsx("h2", { style: { fontSize: '1.5rem', marginBottom: '0.5rem', fontWeight: 700 }, children: "Mark Attendance" }), _jsx("p", { className: "text-muted", style: { marginBottom: '2rem' }, children: "Enter your unique 3-digit secret code" }), _jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: '1.5rem' }, children: [_jsxs("div", { className: "form-group", style: { textAlign: 'left' }, children: [_jsx("label", { className: "form-label", style: { fontSize: '0.85rem', opacity: 0.8 }, children: "Secret Code" }), _jsx("input", { type: "text", className: "form-input", style: {
+                                }, children: "A1 FITNESS" })] }), _jsx("h2", { style: { fontSize: '1.5rem', marginBottom: '0.5rem', fontWeight: 700 }, children: "Mark Attendance" }), _jsx("p", { className: "text-muted", style: { marginBottom: '2rem' }, children: "Enter your unique 3-digit secret code" }), _jsxs("div", { style: { display: 'flex', flexDirection: 'column', gap: '1.5rem' }, children: [_jsxs("div", { className: "form-group", style: { textAlign: 'left' }, children: [_jsx("label", { className: "form-label", style: { fontSize: '0.85rem', opacity: 0.8 }, children: "Secret Code" }), _jsx("input", { type: "text", className: "form-input", style: {
                                             fontSize: '2rem',
                                             textAlign: 'center',
                                             letterSpacing: '0.5rem',

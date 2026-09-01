@@ -1,6 +1,6 @@
-# Gymza UI Structure Documentation
+# A1 Fitness UI Structure Documentation
 
-This document outlines the UI architecture and design system for the Gymza SaaS project.
+This document outlines the UI architecture and design system for the A1 Fitness SaaS project.
 
 ## 🎨 Design System
 

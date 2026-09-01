@@ -14,8 +14,8 @@ const GYM_BRAND = {
   name: "A1 FITNESS",
   displayName: "A1 FITNESS",
   tagline: "Premium Fitness Center",
-  logo: "https://res.cloudinary.com/dyc33dchn/image/upload/q_auto/f_auto/v1776476678/WhatsApp_Image_2026-04-15_at_10.11.03_PM_2_jvuq84.jpg",
-  address: "123 Fitness Avenue, Wellness District",
+  logo: "/logo.svg",
+  address: "",
   phone: "+91 98765 43210",
   email: "contact@a1fitness.com",
   website: "www.a1fitness.com",
@@ -79,6 +79,12 @@ const createPayment = asyncHandler(async (req, res) => {
   const memberQuery = { _id: memberId, gymId, ...(scopedBranch ? { branchCode: scopedBranch } : {}) };
   const scopedMember = await Member.findOne(memberQuery);
   if (!scopedMember) throw Object.assign(new Error("Member not found in your branch"), { statusCode: 404 });
+  // Trainer isolation: trainers may only create payments for their assigned members.
+  if (req.user.role === "trainer") {
+    if (!scopedMember.trainer || String(scopedMember.trainer) !== String(req.user._id)) {
+      throw Object.assign(new Error("You can only create payments for members assigned to you"), { statusCode: 403 });
+    }
+  }
   const invoiceNumber = `INV-${Date.now()}`;
   const branchCode = scopedMember.branchCode || "MAIN";
 
@@ -148,7 +154,12 @@ const listPayments = asyncHandler(async (req, res) => {
     });
   }
   if (requestedBranch) {
-    const memberIds = await Member.find({ gymId, branchCode: requestedBranch }).distinct("_id");
+    const memberQuery = { gymId, branchCode: requestedBranch };
+    // Trainer isolation: trainers only see payments for their assigned members.
+    if (req.user && req.user.role === "trainer") {
+      memberQuery.trainer = req.user._id;
+    }
+    const memberIds = await Member.find(memberQuery).distinct("_id");
     // Payments follow their member's CURRENT branch. Scoping by the payment's
     // stored branchCode instead would let a member reassigned to another branch
     // leak their historical payments into the old branch's list.
@@ -213,7 +224,12 @@ const pendingDues = asyncHandler(async (req, res) => {
   // superadmin may filter via ?branchCode=CODE or see all with ALL.
   const requestedBranch = resolveRequestedBranch(req);
   if (requestedBranch) {
-    const memberIds = await Member.find({ gymId: req.gymId, branchCode: requestedBranch }).distinct("_id");
+    const memberQuery = { gymId: req.gymId, branchCode: requestedBranch };
+    // Trainer isolation: trainers only see pending dues for their assigned members.
+    if (req.user && req.user.role === "trainer") {
+      memberQuery.trainer = req.user._id;
+    }
+    const memberIds = await Member.find(memberQuery).distinct("_id");
     // Scope pending dues by the member's CURRENT branch so a reassigned member's
     // stale payment no longer leaks into the old branch.
     filter.member = { $in: memberIds };
@@ -332,6 +348,12 @@ const getInvoice = asyncHandler(async (req, res) => {
     if (userBranch !== payBranch) {
       throw Object.assign(new Error("Invoice not found in your branch"), { statusCode: 404 });
     }
+    // Trainer isolation: trainers may only access invoices for their assigned members.
+    if (req.user.role === "trainer") {
+      if (!payment.member?.trainer || String(payment.member.trainer) !== String(req.user._id)) {
+        throw Object.assign(new Error("You can only access invoices for members assigned to you"), { statusCode: 403 });
+      }
+    }
   }
 
   const invoiceData = buildDetailedInvoice(payment);
@@ -358,6 +380,12 @@ const generateInvoicePDF = asyncHandler(async (req, res) => {
     const payBranch = (payment.branchCode || payment.member?.branchCode || "MAIN").trim().toUpperCase();
     if (userBranch !== payBranch) {
       throw Object.assign(new Error("Invoice not found in your branch"), { statusCode: 404 });
+    }
+    // Trainer isolation: trainers may only download invoices for their assigned members.
+    if (req.user.role === "trainer") {
+      if (!payment.member?.trainer || String(payment.member.trainer) !== String(req.user._id)) {
+        throw Object.assign(new Error("You can only access invoices for members assigned to you"), { statusCode: 403 });
+      }
     }
   }
 
@@ -514,8 +542,24 @@ const getInvoiceDeliveryStatus = asyncHandler(async (req, res) => {
 });
 
 const sendInvoice = asyncHandler(async (req, res) => {
-  const payment = await Payment.findOne({ _id: req.params.id, gymId: req.gymId });
+  const payment = await Payment.findOne({ _id: req.params.id, gymId: req.gymId })
+    .populate("member", "trainer branchCode");
   if (!payment) throw Object.assign(new Error("Payment not found"), { statusCode: 404 });
+
+  if (req.user && req.user.role !== "superadmin") {
+    const userBranch = (req.user.branchCode || "MAIN").trim().toUpperCase();
+    const payBranch = (payment.branchCode || payment.member?.branchCode || "MAIN").trim().toUpperCase();
+    if (userBranch !== payBranch) {
+      throw Object.assign(new Error("Invoice not found in your branch"), { statusCode: 404 });
+    }
+    // Trainer isolation: trainers may only send invoices for their assigned members.
+    if (req.user.role === "trainer") {
+      if (!payment.member?.trainer || String(payment.member.trainer) !== String(req.user._id)) {
+        throw Object.assign(new Error("You can only access invoices for members assigned to you"), { statusCode: 403 });
+      }
+    }
+  }
+
   const status = await invoiceDeliveryService.canSendInvoice(req.gymId);
   if (!status.allowed) {
     throw Object.assign(new Error(status.message || "Subscription required"), {
@@ -545,7 +589,7 @@ const confirmOnlinePayment = asyncHandler(async (_req, _res) => {
 });
 
 const markAsPaid = asyncHandler(async (req, res) => {
-  const payment = await Payment.findOne({ _id: req.params.id, gymId: req.gymId }).populate("member", "branchCode");
+  const payment = await Payment.findOne({ _id: req.params.id, gymId: req.gymId }).populate("member", "branchCode trainer");
   if (!payment) throw Object.assign(new Error("Payment not found"), { statusCode: 404 });
 
   if (req.user.role !== "superadmin") {
@@ -553,6 +597,12 @@ const markAsPaid = asyncHandler(async (req, res) => {
     const payBranch = (payment.branchCode || payment.member?.branchCode || "MAIN").trim().toUpperCase();
     if (userBranch !== payBranch) {
       throw Object.assign(new Error("Payment not found in your branch"), { statusCode: 404 });
+    }
+    // Trainer isolation: trainers may only mark payments for their assigned members.
+    if (req.user.role === "trainer") {
+      if (!payment.member?.trainer || String(payment.member.trainer) !== String(req.user._id)) {
+        throw Object.assign(new Error("You can only modify payments for members assigned to you"), { statusCode: 403 });
+      }
     }
   }
 
@@ -573,7 +623,7 @@ const markAsPaid = asyncHandler(async (req, res) => {
 });
 
 const markAsUnpaid = asyncHandler(async (req, res) => {
-  const payment = await Payment.findOne({ _id: req.params.id, gymId: req.gymId }).populate("member", "branchCode");
+  const payment = await Payment.findOne({ _id: req.params.id, gymId: req.gymId }).populate("member", "branchCode trainer");
   if (!payment) throw Object.assign(new Error("Payment not found"), { statusCode: 404 });
 
   if (req.user.role !== "superadmin") {
@@ -581,6 +631,12 @@ const markAsUnpaid = asyncHandler(async (req, res) => {
     const payBranch = (payment.branchCode || payment.member?.branchCode || "MAIN").trim().toUpperCase();
     if (userBranch !== payBranch) {
       throw Object.assign(new Error("Payment not found in your branch"), { statusCode: 404 });
+    }
+    // Trainer isolation: trainers may only modify payments for their assigned members.
+    if (req.user.role === "trainer") {
+      if (!payment.member?.trainer || String(payment.member.trainer) !== String(req.user._id)) {
+        throw Object.assign(new Error("You can only modify payments for members assigned to you"), { statusCode: 403 });
+      }
     }
   }
 

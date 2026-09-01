@@ -104,6 +104,10 @@ const getBranchOverview = asyncHandler(async (req, res) => {
   if (!branch) throw Object.assign(new Error("Branch not found"), { statusCode: 404 });
   const branchCode = branch.branchCode || "MAIN";
   const memberMatch = { gymId: req.gymId, branchCode };
+  // Trainer isolation: trainers only see their assigned members in branch overview.
+  if (req.user && req.user.role === "trainer") {
+    memberMatch.trainer = req.user._id;
+  }
   const memberIds = await Member.find(memberMatch).distinct("_id");
   const [totalMembers, activeMembers, staff, revenue, payments, attendance, activeMemberships, expiringMemberships, expiredMemberships, plans] = await Promise.all([
     Member.countDocuments(memberMatch), Member.countDocuments({ ...memberMatch, status: "active", isActivePlan: true }), User.countDocuments({ gymId: req.gymId, branchCode: branch.branchCode, role: { $in: ["admin", "trainer"] } }),

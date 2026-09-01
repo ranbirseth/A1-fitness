@@ -33,6 +33,12 @@ const bookClassSlot = asyncHandler(async (req, res) => {
   if (!enforceBranchOwnership(member.branchCode, req)) {
     throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
   }
+  // Trainer isolation: trainers may only book for their assigned members.
+  if (req.user.role === "trainer") {
+    if (!member.trainer || String(member.trainer) !== String(req.user._id)) {
+      throw Object.assign(new Error("You can only book classes for members assigned to you"), { statusCode: 403 });
+    }
+  }
 
   const slotQuery = { _id: classSlotId };
   if (req.user.role !== "superadmin") slotQuery.gymId = req.gymId;
@@ -54,6 +60,10 @@ const listBookings = asyncHandler(async (req, res) => {
     const memberQuery = { gymId: req.gymId };
     const branchCode = getScopedBranchCode(req);
     if (branchCode) memberQuery.branchCode = branchCode;
+    // Trainer isolation: trainers only see bookings for their assigned members.
+    if (req.user.role === "trainer") {
+      memberQuery.trainer = req.user._id;
+    }
     const memberIds = (await Member.find(memberQuery).select("_id").lean()).map((m) => m._id);
     filter = { gymId: req.gymId, member: { $in: memberIds } };
   }
@@ -78,6 +88,13 @@ const cancelBooking = asyncHandler(async (req, res) => {
     }
   } else if (!enforceBranchOwnership(owner.branchCode, req)) {
     throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
+  }
+  // Trainer isolation: trainers may only cancel bookings for their assigned members.
+  if (req.user.role === "trainer") {
+    const bookingMember = await Member.findById(booking.member).select("trainer").lean();
+    if (!bookingMember || !bookingMember.trainer || String(bookingMember.trainer) !== String(req.user._id)) {
+      throw Object.assign(new Error("You can only cancel bookings for members assigned to you"), { statusCode: 403 });
+    }
   }
 
   booking.status = "cancelled";

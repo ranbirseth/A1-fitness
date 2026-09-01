@@ -294,6 +294,12 @@ const assignDietToMember = asyncHandler(async (req, res) => {
   if (req.user && req.user.role !== "superadmin" && !enforceBranchOwnership(member.branchCode, req)) {
     throw new AppError("Member not found in your branch", 404);
   }
+  // Trainer isolation: trainers may only assign diets to their assigned members.
+  if (req.user && req.user.role === "trainer") {
+    if (!member.trainer || String(member.trainer) !== String(req.user._id)) {
+      throw new AppError("You can only assign diets to members assigned to you", 403);
+    }
+  }
 
   const memberBranch = (member.branchCode || "MAIN").trim().toUpperCase();
 

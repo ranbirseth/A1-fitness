@@ -1,7 +1,7 @@
 import React, { FormEvent, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { login } from "../features/auth/auth.api";
-import { useAuthStore } from "../store/auth.store";
+import { useAuthStore, setRemember } from "../store/auth.store";
 import http from "../api/http";
 import { Mail, Lock, Eye, EyeOff } from "lucide-react";
 
@@ -34,7 +34,7 @@ const animationStyles = `
   @media (max-width: 1023px) {
     .login-page {
       background-image: linear-gradient(135deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.3) 100%), 
-                        url('https://m.gettywallpapers.com/wp-content/uploads/2022/07/Gym-Exercise-Wallpaper.jpg') !important;
+                        url('https://res.cloudinary.com/dyc33dchn/image/upload/v1788244567/ChatGPT_Image_Sep_1_2026_12_05_48_PM_qdwhfr.png') !important;
       background-size: cover !important;
       background-position: center !important;
       background-attachment: fixed !important;
@@ -44,7 +44,7 @@ const animationStyles = `
 
     html .login-page {
       background: linear-gradient(135deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.3) 100%), 
-                  url('https://m.gettywallpapers.com/wp-content/uploads/2022/07/Gym-Exercise-Wallpaper.jpg') !important;
+                  url('https://res.cloudinary.com/dyc33dchn/image/upload/v1788244567/ChatGPT_Image_Sep_1_2026_12_05_48_PM_qdwhfr.png') !important;
       background-size: cover !important;
       background-position: center !important;
       background-attachment: fixed !important;
@@ -170,10 +170,11 @@ const animationStyles = `
 export default function LoginPage() {
   const navigate = useNavigate();
   const { setAuth, gymId, setGymId, user } = useAuthStore();
-  const [email, setEmail] = useState("admin@gymza.com");
-  const [password, setPassword] = useState("Password123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [role, setRole] = useState("member");
   const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRememberState] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -200,6 +201,7 @@ export default function LoginPage() {
     try {
       const { data } = await login({ gymId, email, password, role });
       const userData = data.data.user;
+      setRemember(remember);
       setAuth(userData, data.data.accessToken);
       
       if (userData.role === "member") {
@@ -266,7 +268,7 @@ export default function LoginPage() {
         <div className="glass-card" style={{ padding: '3rem' }}>
           <div className="login-welcome text-center" style={{ marginBottom: '2.5rem' }}>
             <img 
-              src="https://5.imimg.com/data5/SELLER/Logo/2024/2/393834820/NH/UK/RN/70555942/a1-fitness.jpeg" 
+              src="/logo.svg" 
               alt="A1 FITNESS" 
               style={{ 
                 width: '80px',
@@ -329,7 +331,7 @@ export default function LoginPage() {
                   type="email"
                   value={email} 
                   onChange={(e) => setEmail(e.target.value)} 
-                  placeholder="admin@gymza.com" 
+                  placeholder="Enter your email" 
                 />
               </div>
             </div>
@@ -372,7 +374,7 @@ export default function LoginPage() {
 
             <div className="login-form-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer' }}>
-                <input type="checkbox" style={{ accentColor: 'var(--clr-primary)' }} />
+                <input type="checkbox" checked={remember} onChange={(e) => setRememberState(e.target.checked)} style={{ accentColor: 'var(--clr-primary)' }} />
                 <span>Remember me</span>
               </label>
               <Link to="/forgot-password" style={{ fontSize: '0.85rem', color: 'var(--clr-primary)', fontWeight: '600', textDecoration: 'none' }}>Forgot Password?</Link>
@@ -428,8 +430,12 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <div className="login-right" style={{ flex: 1, position: 'relative' }}>
-        {/* Right side background image or illustration could go here */}
+      <div className="login-right" style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <img
+          src="https://res.cloudinary.com/dyc33dchn/image/upload/v1788244567/ChatGPT_Image_Sep_1_2026_12_05_48_PM_qdwhfr.png"
+          alt="A1 Fitness trainer coaching a premium workout session"
+          style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block' }}
+        />
       </div>
     </div>
   );

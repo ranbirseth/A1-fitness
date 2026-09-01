@@ -16,6 +16,12 @@ const createProgress = asyncHandler(async (req, res) => {
   if (!enforceBranchOwnership(member.branchCode, req)) {
     throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
   }
+  // Trainer isolation: trainers may only log progress for their assigned members.
+  if (req.user.role === "trainer") {
+    if (!member.trainer || String(member.trainer) !== String(req.user._id)) {
+      throw Object.assign(new Error("You can only log progress for members assigned to you"), { statusCode: 403 });
+    }
+  }
   const bmi = req.body.weightKg / ((req.body.heightCm / 100) ** 2);
   const progress = await Progress.create({ ...req.body, gymId: member.gymId, bmi: Number(bmi.toFixed(2)) });
   sendResponse(res, { status: 201, message: "Progress logged", data: progress });
@@ -30,6 +36,12 @@ const listProgress = asyncHandler(async (req, res) => {
     }
   } else if (!enforceBranchOwnership(member.branchCode, req)) {
     throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
+  }
+  // Trainer isolation: trainers may only view progress for their assigned members.
+  if (req.user.role === "trainer") {
+    if (!member.trainer || String(member.trainer) !== String(req.user._id)) {
+      throw Object.assign(new Error("You can only view progress for members assigned to you"), { statusCode: 403 });
+    }
   }
   sendResponse(res, { message: "Progress fetched", data: await Progress.find({ member: member._id }).sort({ createdAt: -1 }) });
 });

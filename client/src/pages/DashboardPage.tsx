@@ -326,46 +326,48 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Monthly Revenue */}
-        <div
-          className="stat-card"
-          style={{ position: "relative", overflow: "hidden" }}
-        >
+        {/* Monthly Revenue (hidden for Trainers) */}
+        {!isTrainer && (
           <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              background:
-                "linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(34, 197, 94, 0.08) 100%)",
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-              opacity: 0.3,
-            }}
-          />
-          <div style={{ position: "relative", zIndex: 2 }}>
-            <div className="stat-info">
-              <h3>Monthly Revenue</h3>
-              <p className="stat-value">
-                ₹{(stats.revenue || 0).toLocaleString("en-IN")}
-              </p>
-              <p className="stat-trend trend-up">
-                <TrendingUp size={14} />
-                {isSuperAdmin && selectedBranch === "ALL"
-                  ? "All Branches Total"
-                  : "Branch Total"}
-              </p>
-            </div>
+            className="stat-card"
+            style={{ position: "relative", overflow: "hidden" }}
+          >
             <div
-              className="stat-icon"
               style={{
-                background: "rgba(16, 185, 129, 0.1)",
-                color: "var(--clr-success)",
+                position: "absolute",
+                inset: 0,
+                background:
+                  "linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(34, 197, 94, 0.08) 100%)",
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                opacity: 0.3,
               }}
-            >
-              <IndianRupee size={24} />
+            />
+            <div style={{ position: "relative", zIndex: 2 }}>
+              <div className="stat-info">
+                <h3>Monthly Revenue</h3>
+                <p className="stat-value">
+                  ₹{(stats.revenue || 0).toLocaleString("en-IN")}
+                </p>
+                <p className="stat-trend trend-up">
+                  <TrendingUp size={14} />
+                  {isSuperAdmin && selectedBranch === "ALL"
+                    ? "All Branches Total"
+                    : "Branch Total"}
+                </p>
+              </div>
+              <div
+                className="stat-icon"
+                style={{
+                  background: "rgba(16, 185, 129, 0.1)",
+                  color: "var(--clr-success)",
+                }}
+              >
+                <IndianRupee size={24} />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Active Trainers */}
         <div
@@ -442,10 +444,12 @@ export default function DashboardPage() {
 
       {/* Revenue Analytics + Recent Activities */}
       <div className="dashboard-grid">
-        <div
-          className="glass-panel"
-          style={{ padding: "1.5rem", minHeight: "350px" }}
-        >
+        {/* Revenue Analytics (Last 7 Days) — hidden for Trainers */}
+        {!isTrainer && (
+          <div
+            className="glass-panel"
+            style={{ padding: "1.5rem", minHeight: "350px" }}
+          >
           <div
             style={{
               display: "flex",
@@ -509,6 +513,7 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
+        )}
 
         <div className="glass-panel" style={{ padding: "1.5rem" }}>
           <h3 style={{ fontSize: "1.1rem", marginBottom: "1.5rem" }}>

@@ -92,7 +92,7 @@ export default function SignupPage() {
                                         background: 'var(--clr-accent-gradient)',
                                         marginBottom: '1rem',
                                         color: 'white'
-                                    }, children: _jsx(Dumbbell, { size: 28 }) }), _jsx("h1", { style: { fontSize: '1.75rem', fontWeight: '800' }, children: "Create Account" }), _jsx("p", { className: "text-muted", children: "Join the Gymza community" })] }), _jsxs("form", { onSubmit: submit, children: [error && (_jsx("div", { style: {
+                                    }, children: _jsx(Dumbbell, { size: 28 }) }), _jsx("h1", { style: { fontSize: '1.75rem', fontWeight: '800' }, children: "Create Account" }), _jsx("p", { className: "text-muted", children: "Join the A1 Fitness community" })] }), _jsxs("form", { onSubmit: submit, children: [error && (_jsx("div", { style: {
                                         background: 'rgba(244, 63, 94, 0.1)',
                                         color: 'var(--clr-danger)',
                                         padding: '0.75rem',

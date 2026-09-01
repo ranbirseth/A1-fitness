@@ -141,7 +141,7 @@ export default function DashboardPage() {
                                 } }), _jsxs("div", { style: { position: "relative", zIndex: 2 }, children: [_jsxs("div", { className: "stat-info", children: [_jsx("h3", { children: "Active Plans" }), _jsx("p", { className: "stat-value", children: stats.activePlans }), _jsx("p", { className: "text-muted", style: { fontSize: "0.8rem" }, children: "Members with active plans" })] }), _jsx("div", { className: "stat-icon", style: {
                                             background: "rgba(99, 102, 241, 0.1)",
                                             color: "#6366f1",
-                                        }, children: _jsx(ClipboardList, { size: 24 }) })] })] }), _jsxs("div", { className: "stat-card", style: { position: "relative", overflow: "hidden" }, children: [_jsx("div", { style: {
+                                        }, children: _jsx(ClipboardList, { size: 24 }) })] })] }), !isTrainer && (_jsxs("div", { className: "stat-card", style: { position: "relative", overflow: "hidden" }, children: [_jsx("div", { style: {
                                     position: "absolute",
                                     inset: 0,
                                     background: "linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(34, 197, 94, 0.08) 100%)",
@@ -153,7 +153,7 @@ export default function DashboardPage() {
                                                         : "Branch Total"] })] }), _jsx("div", { className: "stat-icon", style: {
                                             background: "rgba(16, 185, 129, 0.1)",
                                             color: "var(--clr-success)",
-                                        }, children: _jsx(IndianRupee, { size: 24 }) })] })] }), _jsxs("div", { className: "stat-card", style: { position: "relative", overflow: "hidden" }, children: [_jsx("div", { style: {
+                                        }, children: _jsx(IndianRupee, { size: 24 }) })] })] })), _jsxs("div", { className: "stat-card", style: { position: "relative", overflow: "hidden" }, children: [_jsx("div", { style: {
                                     position: "absolute",
                                     inset: 0,
                                     background: "linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%)",
@@ -173,7 +173,7 @@ export default function DashboardPage() {
                                 } }), _jsxs("div", { style: { position: "relative", zIndex: 2 }, children: [_jsxs("div", { className: "stat-info", children: [_jsx("h3", { children: "Attendance Today" }), _jsx("p", { className: "stat-value", children: stats.attendanceToday }), _jsx("p", { className: "text-muted", style: { fontSize: "0.8rem" }, children: "Check-ins today" })] }), _jsx("div", { className: "stat-icon", style: {
                                             background: "rgba(245, 158, 11, 0.1)",
                                             color: "var(--clr-warning)",
-                                        }, children: _jsx(CalendarCheck, { size: 24 }) })] })] })] }), _jsxs("div", { className: "dashboard-grid", children: [_jsxs("div", { className: "glass-panel", style: { padding: "1.5rem", minHeight: "350px" }, children: [_jsx("div", { style: {
+                                        }, children: _jsx(CalendarCheck, { size: 24 }) })] })] })] }), _jsxs("div", { className: "dashboard-grid", children: [!isTrainer && (_jsxs("div", { className: "glass-panel", style: { padding: "1.5rem", minHeight: "350px" }, children: [_jsx("div", { style: {
                                     display: "flex",
                                     justifyContent: "space-between",
                                     alignItems: "center",
@@ -203,7 +203,7 @@ export default function DashboardPage() {
                                         flex: 1,
                                         textAlign: "center",
                                         color: "var(--clr-text-muted)",
-                                    }, children: "No revenue recorded for the last 7 days" })) })] }), _jsxs("div", { className: "glass-panel", style: { padding: "1.5rem" }, children: [_jsx("h3", { style: { fontSize: "1.1rem", marginBottom: "1.5rem" }, children: "Recent Activities" }), _jsx("div", { style: {
+                                    }, children: "No revenue recorded for the last 7 days" })) })] })), _jsxs("div", { className: "glass-panel", style: { padding: "1.5rem" }, children: [_jsx("h3", { style: { fontSize: "1.1rem", marginBottom: "1.5rem" }, children: "Recent Activities" }), _jsx("div", { style: {
                                     display: "flex",
                                     flexDirection: "column",
                                     gap: "1.5rem",

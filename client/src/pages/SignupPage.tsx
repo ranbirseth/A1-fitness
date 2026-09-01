@@ -103,7 +103,7 @@ export default function SignupPage() {
               <Dumbbell size={28} />
             </div>
             <h1 style={{ fontSize: '1.75rem', fontWeight: '800' }}>Create Account</h1>
-            <p className="text-muted">Join the Gymza community</p>
+            <p className="text-muted">Join the A1 Fitness community</p>
           </div>
 
           <form onSubmit={submit}>

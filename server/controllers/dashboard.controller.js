@@ -12,7 +12,9 @@ const getStats = asyncHandler(async (req, res) => {
     : (req.user.branchCode || "MAIN").trim().toUpperCase();
 
   const branchFilter = activeBranch ? { branchCode: activeBranch } : {};
-  const cacheKey = `dashboard:stats:${req.gymId}:${activeBranch || "all"}`;
+  const isTrainer = req.user.role === "trainer";
+  const trainerFilter = isTrainer ? { trainer: req.user._id } : {};
+  const cacheKey = `dashboard:stats:${req.gymId}:${activeBranch || "all"}${isTrainer ? `:t:${req.user._id}` : ""}`;
   const cached = await getCache(cacheKey);
   if (cached) return sendResponse(res, { message: "Dashboard stats fetched (cache)", data: cached });
 
@@ -23,6 +25,17 @@ const getStats = asyncHandler(async (req, res) => {
 
   const memberIdsInBranch = activeBranch
     ? await Member.find({ gymId: req.gymId, branchCode: activeBranch }).distinct("_id")
+    : null;
+
+  // For Trainers, attendance must be restricted to the members assigned to the
+  // authenticated Trainer (Member.trainer === req.user._id), never another
+  // trainer's members or unassigned members, while preserving branch isolation.
+  const trainerMemberIds = isTrainer
+    ? await Member.find({
+        gymId: req.gymId,
+        trainer: req.user._id,
+        ...(activeBranch ? { branchCode: activeBranch } : {})
+      }).distinct("_id")
     : null;
 
   const paymentMatch = {
@@ -38,11 +51,13 @@ const getStats = asyncHandler(async (req, res) => {
     deletedAt: null,
     checkIn: { $gte: startOfDay, $lte: endOfDay },
     // Scope by the member's CURRENT branch (every attendance is member-linked).
-    ...(activeBranch ? { member: { $in: memberIdsInBranch } } : {})
+    ...(activeBranch ? { member: { $in: memberIdsInBranch } } : {}),
+    // Trainers only see attendance for their own assigned members.
+    ...(isTrainer ? { member: { $in: trainerMemberIds } } : {})
   };
 
   const [totalMembers, activePlans, revenueObj, activeTrainers, attendanceToday, revenueAnalytics, recentActivities] = await Promise.all([
-    Member.countDocuments({ gymId: req.gymId, ...branchFilter }),
+    Member.countDocuments({ gymId: req.gymId, ...branchFilter, ...trainerFilter }),
     Member.countDocuments({ gymId: req.gymId, ...branchFilter, isActivePlan: true }),
     Payment.aggregate([
       { $match: paymentMatch },
@@ -68,7 +83,7 @@ const getStats = asyncHandler(async (req, res) => {
     ]),
     // Recent activities (mix of new members, payments, and attendance)
     Promise.all([
-      Member.find({ gymId: req.gymId, ...branchFilter }).sort({ createdAt: -1 }).limit(3).populate("user", "name"),
+      Member.find({ gymId: req.gymId, ...branchFilter, ...trainerFilter }).sort({ createdAt: -1 }).limit(3).populate("user", "name"),
       Payment.find(paymentMatch).sort({ createdAt: -1 }).limit(3).populate({ path: "member", populate: { path: "user", select: "name" } }),
       Attendance.find({ gymId: req.gymId, deletedAt: null, ...(activeBranch ? { member: { $in: memberIdsInBranch } } : {}) }).sort({ checkIn: -1 }).limit(3).populate({ path: "member", populate: { path: "user", select: "name" } })
     ])
@@ -96,10 +111,14 @@ const getStats = asyncHandler(async (req, res) => {
   const data = { 
     totalMembers, 
     activePlans, 
-    revenue: revenueObj[0]?.total || 0,
+    // Trainers must never receive the Monthly Revenue figure (financial data
+    // is not exposed to Trainers even though the card is hidden in the UI).
+    revenue: isTrainer ? 0 : (revenueObj[0]?.total || 0),
     activeTrainers,
     attendanceToday,
-    revenueAnalytics,
+    // Revenue Analytics (Last 7 Days) is financial data: not exposed to
+    // Trainers even though the chart is hidden in the UI.
+    revenueAnalytics: isTrainer ? [] : revenueAnalytics,
     recentActivities: processedActivities,
     branchCode: activeBranch || "ALL"
   };

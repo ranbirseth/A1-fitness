@@ -62,8 +62,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       <div className="sidebar-header">
         <div className="sidebar-logo">
           <img 
-            src="https://res.cloudinary.com/dyc33dchn/image/upload/q_auto/f_auto/v1776476678/WhatsApp_Image_2026-04-15_at_10.11.03_PM_2_jvuq84.jpg" 
-            alt="RUDRA FITNESS" 
+            src="/logo.svg" 
+            alt="A1 FITNESS" 
             style={{ 
               width: '40px',
               height: '40px',
@@ -80,7 +80,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text'
-          }}>RUDRA</span>
+          }}>A1 FITNESS</span>
         </div>
         <button className="sidebar-close-btn" onClick={onClose}>
           <X size={24} />
