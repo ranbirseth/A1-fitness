@@ -25,6 +25,7 @@ const startExpiryReminderJob = () => {
 
     // 2 & 3. Send expiry + payment reminders (at 9 AM daily).
     if (now.getHours() === 9) {
+      console.log("[WHATSAPP] --> scheduled expiry reminder cron fired (9 AM pass)");
       // Expiry reminders via the shared calendar-day reminder service
       // (in-app expiry notifications with deduplication).
       const summary = await sendRenewalReminders({ gymId: undefined, branchCode: undefined, now });

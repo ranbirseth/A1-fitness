@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { getPayments, getAdminPayments, getInvoice, markAsPaid, markAsUnpaid, sendReminders, recordPayment } from '../features/payments/payments.api';
+import React, { useEffect, useRef, useState } from 'react';
+import { getPayments, getAdminPayments, getInvoice, markAsPaid, markAsUnpaid, sendReminders } from '../features/payments/payments.api';
 import { getMyProfile, renewPlan } from '../features/members/members.api';
 import { getPlans } from '../features/plans/plans.api';
 import { useAuthStore } from '../store/auth.store';
@@ -32,6 +32,7 @@ const PaymentsPage: React.FC = () => {
   const [plans, setPlans] = useState<any[]>([]);
   const [renewModalOpen, setRenewModalOpen] = useState(false);
   const [renewLoading, setRenewLoading] = useState(false);
+  const renewSubmitRef = useRef(false);
   const [selectedRenewMember, setSelectedRenewMember] = useState<any>(null);
   const [renewFormData, setRenewFormData] = useState({ planId: '', amount: 0, note: '', recordPayment: true });
 
@@ -89,28 +90,34 @@ const PaymentsPage: React.FC = () => {
   };
 
   const handleRenewMember = async () => {
-    if (!selectedRenewMember?._id) return;
+    if (!selectedRenewMember?._id || renewSubmitRef.current) return;
     if (!renewFormData.planId) {
       alert('Please select a plan first');
       return;
     }
+    renewSubmitRef.current = true;
     setRenewLoading(true);
     try {
-      await renewPlan(selectedRenewMember._id, { planId: renewFormData.planId });
-      if (renewFormData.recordPayment && renewFormData.amount > 0) {
-        await recordPayment({
-          member: selectedRenewMember._id,
-          plan: renewFormData.planId,
-          amount: renewFormData.amount,
-          note: renewFormData.note,
-          status: 'paid'
-        });
-      }
+      // Renew uses the atomic membership endpoint, which creates exactly ONE
+      // Payment record. Payment details are passed inline so we never issue a
+      // second POST /payments call. The idempotencyKey lets the backend dedupe
+      // a genuine simultaneous retry even at a different millisecond.
+      await renewPlan(selectedRenewMember._id, {
+        planId: renewFormData.planId,
+        payment: {
+          amount: renewFormData.amount || undefined,
+          method: 'cash',
+          status: renewFormData.recordPayment ? 'paid' : 'pending',
+          note: renewFormData.note || undefined,
+          idempotencyKey: `renew:${selectedRenewMember._id}:${renewFormData.planId}:${Date.now()}`
+        }
+      });
       setRenewModalOpen(false);
       fetchData(globalBranch);
     } catch (error: any) {
       alert(error.response?.data?.message || 'Renewal failed. Please try again.');
     } finally {
+      renewSubmitRef.current = false;
       setRenewLoading(false);
     }
   };

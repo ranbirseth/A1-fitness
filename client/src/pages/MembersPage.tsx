@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Users, Search, Plus, Filter, Edit2, Trash2, Shield, Calendar, CreditCard, Zap, Building2, UserX, UserCheck, UserSquare2 } from 'lucide-react';
 import { getMembers, createMember, deleteMember, assignPlan, renewPlan, upgradePlan, cancelPlan, freezePlan, resumePlan, approveMember, updateMember } from '../features/members/members.api';
 import { getPlans } from '../features/plans/plans.api';
 import { getTrainers } from '../features/trainers/trainers.api';
-import { recordPayment } from '../features/payments/payments.api';
 import { useDebounce } from '../hooks/useDebounce';
 import { useAuthStore } from '../store/auth.store';
 import { useBranchStore } from '../store/branch.store';
@@ -38,9 +37,12 @@ const MembersPage: React.FC = () => {
     email: '', 
     phone: '', 
     password: 'Password123',
-    planId: '',
     trainerId: '',
-    branchCode: defaultBranch
+    branchCode: defaultBranch,
+    planId: '',
+    amount: 0,
+    note: '',
+    recordPayment: true
   });
 
   const [editFormData, setEditFormData] = useState({
@@ -57,6 +59,9 @@ const MembersPage: React.FC = () => {
     note: '',
     recordPayment: true
   });
+
+  const submittingRef = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Sync filterBranch with globalBranch changes
   useEffect(() => {
@@ -123,13 +128,26 @@ const MembersPage: React.FC = () => {
   const handleCreateMember = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = {
-        ...formData,
+      const payload: Record<string, unknown> = {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        password: formData.password,
+        trainerId: formData.trainerId,
         branchCode: isSuperAdmin ? formData.branchCode : (user?.branchCode || 'MAIN')
       };
+      if (formData.planId) {
+        payload.planId = formData.planId;
+        payload.payment = {
+          amount: formData.amount || undefined,
+          method: 'cash',
+          status: formData.recordPayment ? 'paid' : 'pending',
+          note: formData.note || undefined
+        };
+      }
       await createMember(payload);
       setIsModalOpen(false);
-      setFormData({ name: '', email: '', phone: '', password: 'Password123', planId: '', trainerId: '', branchCode: defaultBranch });
+      setFormData({ name: '', email: '', phone: '', password: 'Password123', trainerId: '', branchCode: defaultBranch, planId: '', amount: 0, note: '', recordPayment: true });
       fetchMembersList(debouncedSearch, filterStatus, filterBranch);
     } catch (error: any) {
       alert(error.response?.data?.message || 'Failed to create member');
@@ -203,32 +221,38 @@ const MembersPage: React.FC = () => {
   };
 
   const handleSubscriptionAction = async (action: 'assign' | 'renew' | 'upgrade' | 'freeze' | 'resume' | 'cancel') => {
-    if (!selectedMember) return;
+    if (!selectedMember || submittingRef.current) return;
     try {
       if (!subFormData.planId && ['assign', 'renew', 'upgrade'].includes(action)) {
         alert('Please select a plan first');
         return;
       }
-      if (action === 'assign') await assignPlan(selectedMember._id, { planId: subFormData.planId });
-      else if (action === 'renew') await renewPlan(selectedMember._id, { planId: subFormData.planId });
-      else if (action === 'upgrade') await upgradePlan(selectedMember._id, { planId: subFormData.planId });
+      submittingRef.current = true;
+      setSubmitting(true);
+      // Assign/Renew/Upgrade use the atomic membership endpoint which creates
+      // exactly ONE Payment record. The payment details (amount, method, status,
+      // note) are passed inline so we never issue a second POST /payments call.
+      const payment = {
+        amount: subFormData.amount || undefined,
+        method: 'cash',
+        status: subFormData.recordPayment ? 'paid' : 'pending',
+        note: subFormData.note || undefined,
+        idempotencyKey: `${action}:${selectedMember._id}:${subFormData.planId || selectedMember.currentPlan}:${Date.now()}`
+      };
+      if (action === 'assign') await assignPlan(selectedMember._id, { planId: subFormData.planId, payment });
+      else if (action === 'renew') await renewPlan(selectedMember._id, { planId: subFormData.planId, payment });
+      else if (action === 'upgrade') await upgradePlan(selectedMember._id, { planId: subFormData.planId, payment });
       else if (action === 'freeze') await freezePlan(selectedMember._id);
       else if (action === 'resume') await resumePlan(selectedMember._id);
       else if (action === 'cancel') await cancelPlan(selectedMember._id);
 
-      if (subFormData.recordPayment && subFormData.amount > 0 && ['assign', 'renew', 'upgrade'].includes(action)) {
-        await recordPayment({
-          member: selectedMember._id,
-          plan: subFormData.planId,
-          amount: subFormData.amount,
-          note: subFormData.note,
-          status: 'paid'
-        });
-      }
       setIsSubModalOpen(false);
       fetchMembersList(debouncedSearch, filterStatus, filterBranch);
     } catch (error: any) {
       alert(error.response?.data?.message || `Action ${action} failed`);
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
     }
   };
 
@@ -242,7 +266,7 @@ const MembersPage: React.FC = () => {
         <div>
           {isAdmin && (
             <button className="btn btn-primary" onClick={() => {
-              setFormData({ name: '', email: '', phone: '', password: 'Password123', planId: '', trainerId: '', branchCode: defaultBranch });
+              setFormData({ name: '', email: '', phone: '', password: 'Password123', trainerId: '', branchCode: defaultBranch, planId: '', amount: 0, note: '', recordPayment: true });
               setIsModalOpen(true);
             }}>
               <Plus size={18} /> Add Member
@@ -341,13 +365,6 @@ const MembersPage: React.FC = () => {
             )}
 
             <div className="form-group">
-              <label className="form-label">Initial Plan (Optional)</label>
-              <select className="form-input" value={formData.planId} onChange={e => setFormData({...formData, planId: e.target.value})}>
-                <option value="">Select a plan</option>
-                {plans.map(p => <option key={p._id} value={p._id}>{p.name} - ₹{p.price}</option>)}
-              </select>
-            </div>
-            <div className="form-group">
               <label className="form-label">Assign Trainer (Optional)</label>
               <select 
                 className="form-input"
@@ -360,6 +377,54 @@ const MembersPage: React.FC = () => {
                 ))}
               </select>
             </div>
+
+            <div className="form-group">
+              <label className="form-label">Initial Plan (Optional)</label>
+              <select 
+                className="form-input"
+                value={formData.planId} 
+                onChange={e => {
+                  const plan = plans.find(p => p._id === e.target.value);
+                  setFormData({ ...formData, planId: e.target.value, amount: plan?.price || 0 });
+                }}
+              >
+                <option value="">No initial plan</option>
+                {plans.map(p => (
+                  <option key={p._id} value={p._id}>{p.name} - ₹{p.price} ({p.duration} days)</option>
+                ))}
+              </select>
+            </div>
+
+            {formData.planId && (
+              <>
+                <div className="form-group">
+                  <label className="form-label">Initial Payment Amount</label>
+                  <input 
+                    className="form-input" 
+                    type="number" 
+                    min="0"
+                    value={formData.amount} 
+                    onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Note (Optional)</label>
+                  <input 
+                    className="form-input" 
+                    value={formData.note} 
+                    onChange={e => setFormData({ ...formData, note: e.target.value })}
+                  />
+                </div>
+                <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={formData.recordPayment} 
+                    onChange={e => setFormData({ ...formData, recordPayment: e.target.checked })}
+                  />
+                  <label className="form-label" style={{ marginBottom: 0 }}>Record payment now (mark as paid)</label>
+                </div>
+              </>
+            )}
           </div>
           <div style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)', position: 'sticky', bottom: 0, background: 'var(--clr-bg-sidebar)', zIndex: 10 }}>
             <button className="btn btn-primary w-full" type="submit">Create Member</button>
@@ -494,9 +559,9 @@ const MembersPage: React.FC = () => {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                <button className="btn btn-primary" onClick={() => handleSubscriptionAction('assign')}>Assign</button>
-                <button className="btn btn-secondary" onClick={() => handleSubscriptionAction('renew')}>Renew</button>
-                <button className="btn btn-warning" onClick={() => handleSubscriptionAction('upgrade')}>Upgrade</button>
+                <button type="button" className="btn btn-primary" disabled={submitting} onClick={() => handleSubscriptionAction('assign')}>{submitting ? 'Saving...' : 'Assign'}</button>
+                <button type="button" className="btn btn-secondary" disabled={submitting} onClick={() => handleSubscriptionAction('renew')}>{submitting ? 'Saving...' : 'Renew'}</button>
+                <button type="button" className="btn btn-warning" disabled={submitting} onClick={() => handleSubscriptionAction('upgrade')}>{submitting ? 'Saving...' : 'Upgrade'}</button>
               </div>
               <p className="text-muted" style={{ fontSize: '0.72rem', marginBottom: '1.5rem' }}>
                 Assign/Upgrade start a new term from today. Renew continues from the current expiry while the membership is still active.
@@ -504,9 +569,9 @@ const MembersPage: React.FC = () => {
             </div>
 
             <div style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--clr-glass-border)', position: 'sticky', bottom: 0, background: 'var(--clr-bg-sidebar)', zIndex: 10, display: 'flex', gap: '0.75rem' }}>
-              <button className="btn btn-warning flex-1" onClick={() => handleSubscriptionAction('freeze')}>Freeze</button>
-              <button className="btn btn-success flex-1" onClick={() => handleSubscriptionAction('resume')}>Resume</button>
-              <button className="btn btn-danger flex-1" onClick={() => handleSubscriptionAction('cancel')}>Cancel</button>
+              <button type="button" className="btn btn-warning flex-1" disabled={submitting} onClick={() => handleSubscriptionAction('freeze')}>{submitting ? 'Saving...' : 'Freeze'}</button>
+              <button type="button" className="btn btn-success flex-1" disabled={submitting} onClick={() => handleSubscriptionAction('resume')}>{submitting ? 'Saving...' : 'Resume'}</button>
+              <button type="button" className="btn btn-danger flex-1" disabled={submitting} onClick={() => handleSubscriptionAction('cancel')}>{submitting ? 'Saving...' : 'Cancel'}</button>
             </div>
           </div>
         )}

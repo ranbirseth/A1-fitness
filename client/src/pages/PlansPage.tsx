@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Check, X, Plus, Trash2, Edit2, Save, IndianRupee, Clock, Zap, Search, UserPlus, Building2 } from 'lucide-react';
 import { getPlans, createPlan, updatePlan, deletePlan, applyPlanToBranch, removePlanFromBranch } from '../features/plans/plans.api';
 import { getMembers, assignPlan } from '../features/members/members.api';
-import { recordPayment } from '../features/payments/payments.api';
 import { useDebounce } from '../hooks/useDebounce';
 import { useAuthStore } from '../store/auth.store';
 import { useBranchStore } from '../store/branch.store';
@@ -28,6 +27,7 @@ const PlansPage: React.FC = () => {
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const debouncedMemberSearch = useDebounce(memberSearchQuery, 500);
   const [isAssigning, setIsAssigning] = useState(false);
+  const assignSubmitRef = useRef(false);
   const [recordAssignPayment, setRecordAssignPayment] = useState(true);
 
   const [isApplyBranchModalOpen, setIsApplyBranchModalOpen] = useState(false);
@@ -75,27 +75,32 @@ const PlansPage: React.FC = () => {
   };
 
   const handleAssignToMember = async (memberId: string) => {
-    if (!selectedPlanForAssign) return;
+    if (!selectedPlanForAssign || assignSubmitRef.current) return;
+    assignSubmitRef.current = true;
     setIsAssigning(true);
     try {
-      await assignPlan(memberId, { planId: selectedPlanForAssign._id });
-      
-      if (recordAssignPayment) {
-        await recordPayment({
-          member: memberId,
-          plan: selectedPlanForAssign._id,
+      // Assign uses the atomic membership endpoint, which creates exactly ONE
+      // Payment record. Payment details are passed inline so we never issue a
+      // second POST /payments call. A generated idempotencyKey lets the backend
+      // dedupe a genuinely simultaneous retry even if it lands on a different
+      // millisecond (and therefore a different termKey).
+      await assignPlan(memberId, {
+        planId: selectedPlanForAssign._id,
+        payment: {
           amount: selectedPlanForAssign.price,
           method: 'cash',
-          status: 'paid',
-          note: `Assigned plan ${selectedPlanForAssign.name} from Plans section.`
-        });
-      }
-      
+          status: recordAssignPayment ? 'paid' : 'pending',
+          note: `Assigned plan ${selectedPlanForAssign.name} from Plans section.`,
+          idempotencyKey: `assign:${memberId}:${selectedPlanForAssign._id}:${Date.now()}`
+        }
+      });
+
       alert('Plan assigned successfully!');
       setIsAssignModalOpen(false);
     } catch (error: any) {
       alert(error.response?.data?.message || 'Failed to assign plan');
     } finally {
+      assignSubmitRef.current = false;
       setIsAssigning(false);
     }
   };

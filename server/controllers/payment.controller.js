@@ -85,6 +85,56 @@ const createPayment = asyncHandler(async (req, res) => {
       throw Object.assign(new Error("You can only create payments for members assigned to you"), { statusCode: 403 });
     }
   }
+
+  // Idempotency / backward compatibility: assign/renew/upgrade now create the
+  // Payment atomically inside their own transaction. The legacy web flow still
+  // issues a separate POST /api/payments immediately afterwards. If a Payment
+  // already exists whose term snapshots exactly match the member's CURRENT term,
+  // treat this second call as an idempotent completion (apply the fields that
+  // were sent, e.g. an edited amount/method/status) and return it instead of
+  // duplicating revenue. Payments for other/historical terms are untouched.
+  if (scopedMember.membershipStartDate && scopedMember.membershipExpiryDate) {
+    const existingTermPayment = await Payment.findOne({
+      gymId,
+      member: scopedMember._id,
+      plan: planId,
+      membershipStartDate: scopedMember.membershipStartDate,
+      membershipExpiryDate: scopedMember.membershipExpiryDate
+    });
+    if (existingTermPayment) {
+      const patch = {};
+      if (amount !== undefined) patch.amount = amount;
+      if (method !== undefined) patch.method = method;
+      if (status !== undefined) patch.status = status;
+      if (note !== undefined) patch.note = note;
+      if (date !== undefined) patch.date = date;
+      if (Object.keys(patch).length > 0) {
+        Object.assign(existingTermPayment, patch);
+        await existingTermPayment.save();
+      }
+
+      const effectiveStatus = status !== undefined ? status : existingTermPayment.status;
+      if (effectiveStatus === "paid") {
+        scopedMember.paymentStatus = "paid";
+        if (scopedMember.membershipExpiryDate && new Date() < new Date(scopedMember.membershipExpiryDate)) {
+          scopedMember.status = "active";
+          scopedMember.isActivePlan = true;
+        }
+      } else {
+        scopedMember.paymentStatus = "pending";
+        scopedMember.status = "pending";
+        scopedMember.isActivePlan = false;
+      }
+      await scopedMember.save();
+
+      sendResponse(res, {
+        message: "Payment for the current membership term already recorded. Updated instead of duplicating.",
+        data: existingTermPayment
+      });
+      return;
+    }
+  }
+
   const invoiceNumber = `INV-${Date.now()}`;
   const branchCode = scopedMember.branchCode || "MAIN";
 

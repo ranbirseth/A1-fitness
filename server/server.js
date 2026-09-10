@@ -19,6 +19,7 @@ const { configureCloudinary } = require("./config/cloudinary");
 const { errorHandler } = require("./middlewares/error.middleware");
 const { startExpiryReminderJob } = require("./jobs/expiryReminder.job");
 const { backfillTemplateBranches } = require("./services/templateBranch.service");
+const { migrateUserEmailIndex } = require("./services/userIndex.service");
 
 // ============================================================
 // EXPRESS APP
@@ -429,6 +430,9 @@ const start = async () => {
       // One-time idempotent migration: build junction rows for legacy templates
       // that were stored with a single branchCode field.
       await backfillTemplateBranches();
+      // One-time idempotent migration: BUG-04 made member email optional. Ensure
+      // the gymId/email unique index is sparse so members without email can coexist.
+      await migrateUserEmailIndex();
     } else {
       console.warn(
         "Database is unavailable. " +

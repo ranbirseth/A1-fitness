@@ -13,10 +13,12 @@ export const updateMember = (id: string, payload: Record<string, unknown>) => ht
 export const deleteMember = (id: string) => http.delete(`/members/${id}`);
 export const searchMembers = (q: string, page = 1, limit = 10) =>
   http.get(`/members/search?q=${encodeURIComponent(q)}&page=${page}&limit=${limit}`);
-export const assignPlan = (id: string, payload: { planId: string; membershipStartDate?: string }) =>
+export const assignPlan = (id: string, payload: { planId: string; membershipStartDate?: string; idempotencyKey?: string; payment?: { amount?: number; method?: string; status?: string; note?: string; idempotencyKey?: string } }) =>
   http.patch(`/members/${id}/assign-plan`, payload);
-export const renewPlan = (id: string, payload: { planId?: string }) => http.patch(`/members/${id}/renew-plan`, payload);
-export const upgradePlan = (id: string, payload: { planId: string }) => http.patch(`/members/${id}/upgrade-plan`, payload);
+export const renewPlan = (id: string, payload: { planId?: string; idempotencyKey?: string; payment?: { amount?: number; method?: string; status?: string; note?: string; idempotencyKey?: string } }) =>
+  http.patch(`/members/${id}/renew-plan`, payload);
+export const upgradePlan = (id: string, payload: { planId: string; idempotencyKey?: string; payment?: { amount?: number; method?: string; status?: string; note?: string; idempotencyKey?: string } }) =>
+  http.patch(`/members/${id}/upgrade-plan`, payload);
 export const cancelPlan = (id: string) => http.patch(`/members/${id}/cancel-plan`);
 export const freezePlan = (id: string) => http.patch(`/members/${id}/freeze-plan`);
 export const resumePlan = (id: string) => http.patch(`/members/${id}/resume-plan`);
