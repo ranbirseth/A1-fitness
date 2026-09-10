@@ -156,7 +156,7 @@ const login = asyncHandler(async (req, res) => {
     maxAge: 7 * 24 * 60 * 60 * 1000
   });
 
-  sendResponse(res, { message: "Login successful", data: { user: sanitizeUser(user, member), accessToken: tokens.accessToken } });
+  sendResponse(res, { message: "Login successful", data: { user: sanitizeUser(user, member), accessToken: tokens.accessToken, refreshToken: tokens.refreshToken } });
 });
 
 const refresh = asyncHandler(async (req, res) => {
@@ -187,7 +187,7 @@ const refresh = asyncHandler(async (req, res) => {
     maxAge: 7 * 24 * 60 * 60 * 1000
   });
 
-  sendResponse(res, { message: "Token refreshed", data: { accessToken: tokens.accessToken } });
+  sendResponse(res, { message: "Token refreshed", data: { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken } });
 });
 
 const logout = asyncHandler(async (req, res) => {
@@ -322,7 +322,7 @@ const demoLogin = asyncHandler(async (req, res) => {
 
   sendResponse(res, {
     message: "Demo login successful",
-    data: { user: sanitizeUser(user, member), accessToken: tokens.accessToken },
+    data: { user: sanitizeUser(user, member), accessToken: tokens.accessToken, refreshToken: tokens.refreshToken },
   });
 });
 
