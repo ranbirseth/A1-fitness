@@ -36,6 +36,7 @@ const AccessRestrictedPage = lazy(() => import("./pages/AccessRestrictedPage"));
 const QRAttendancePage = lazy(() => import("./pages/QRAttendancePage"));
 const InvoicesPage = lazy(() => import("./pages/InvoicesPage"));
 const AdminsPage = lazy(() => import("./pages/AdminsPage"));
+const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicyPage"));
 
 function App() {
   const { user, accessToken } = useAuthStore();
@@ -105,6 +106,7 @@ function App() {
           <Route path="/account-inactive" element={<DiscardedPage />} />
           <Route path="/access-restricted" element={<AccessRestrictedPage />} />
           <Route path="/mark-attendance" element={<QRAttendancePage />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
           
           <Route
             path="/"
